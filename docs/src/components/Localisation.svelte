@@ -90,14 +90,6 @@
             </div>
 
             <div class="side">
-                <ColourLegend
-                    title={meta(chosen).title}
-                    localKind={entry?.localKind ?? "share"}
-                    lo={painted?.lo ?? 0}
-                    hi={painted?.hi ?? 1}
-                    family={painted?.family ?? "relative"}
-                />
-
                 <p class="verdict">
                     <code>{chosen}</code> {verdict}
                 </p>
@@ -123,6 +115,22 @@
                     of the {item.n}. A measure carrying about that much is spreading the blame
                     evenly; well above it is localising.
                 </p>
+            </div>
+
+            <!--
+                Full width, on its own row. The legend is mostly prose; in
+                either column it wraps to ten ragged lines and leaves the other
+                one empty beside it.
+            -->
+            <div class="legend">
+                <ColourLegend
+                    title={meta(chosen).title}
+                    localKind={entry?.localKind ?? "share"}
+                    lo={painted?.lo ?? 0}
+                    hi={painted?.hi ?? 1}
+                    domain={meta(chosen).domain}
+                    family={painted?.family ?? "relative"}
+                />
             </div>
         </div>
     {/if}
@@ -172,7 +180,9 @@
     }
     .body {
         display: grid;
-        grid-template-columns: 1fr minmax(14rem, 18rem);
+        /* The side column holds a table of fixed width; give it enough that the
+           rows do not wrap, and let the plot take the rest. */
+        grid-template-columns: minmax(0, 1fr) minmax(17rem, 21rem);
         gap: 1rem;
         align-items: start;
     }
@@ -184,6 +194,12 @@
     .plot,
     .side {
         min-width: 0;
+    }
+    .legend {
+        grid-column: 1 / -1;
+        min-width: 0;
+        border-top: 1px solid var(--sl-color-gray-5);
+        padding-top: 0.6rem;
     }
     .verdict {
         margin: 0.5rem 0;

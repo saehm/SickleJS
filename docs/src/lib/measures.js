@@ -242,12 +242,12 @@ export const LOCAL_KINDS = {
     },
     share: {
         label: "share of total",
-        blurb: "Each point's share of the total error. These sum to 1 — a large share is a large contribution, not a bad score.",
+        blurb: "Each point's share of the total error. These sum to 1. A large share is a lead worth checking; a small one is not an all-clear.",
         unit: "share",
     },
     sum: {
         label: "contribution",
-        blurb: "Each point's contribution, in the measure's own units. These sum to the reported value.",
+        blurb: "Each point's contribution, in the measure's own units. These sum to the reported value. A large one is a lead; a small one is not an all-clear.",
         unit: "contribution",
     },
     "partial-mean": {
