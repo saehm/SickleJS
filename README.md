@@ -146,4 +146,3 @@ Built to interoperate with [DruidJS](https://github.com/saehm/DruidJS), which pr
 
 > **Status:** neighbourhood, distance, embedding-cost, separability, structure, topology, cluster-reliability and scagnostics families are implemented and verified.
 > Still missing: Procrustes and the topographic product. Persistent homology covers H0 and H1; H1 is capped at ~200 points, see [`src/metrics/NOTES-topology.md`](./src/metrics/NOTES-topology.md).
-> SepMe lives in its own project ([SepMeJS](https://github.com/saehm/SepMeJS)) — a framework of 2002 measures with a different contract, not a metric.
