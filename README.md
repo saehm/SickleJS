@@ -8,6 +8,7 @@ sickle gives you 33 measures across eight families behind one API, each declarin
 <br>
 
 [![CI](https://img.shields.io/github/actions/workflow/status/saehm/SickleJS/ci.yml?branch=main&label=tests)](https://github.com/saehm/SickleJS/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/codecov/c/github/saehm/SickleJS?label=coverage)](https://app.codecov.io/gh/saehm/SickleJS)
 ![NPM Downloads](https://img.shields.io/npm/dw/%40saehrimnir%2Fsickle)
 [![License](https://img.shields.io/github/license/saehm/SickleJS)](https://raw.githubusercontent.com/saehm/SickleJS/refs/heads/main/LICENCE)
 
