@@ -1,0 +1,57 @@
+---
+title: sickle
+description: Quality metrics for dimensionality-reduction projections, verified against published reference implementations.
+template: splash
+hero:
+    tagline: How much of your data survived the projection — and which measure would have told you.
+    image:
+        alt: The sickle logo
+        dark: ../../assets/dark-icon.svg
+        light: ../../assets/light-icon.svg
+    actions:
+        - text: Choosing a measure
+          link: /SickleJS/choosing/
+          icon: right-arrow
+        - text: On GitHub
+          link: https://github.com/saehm/SickleJS
+          icon: external
+          variant: minimal
+---
+
+import { CardGrid, Card } from "@astrojs/starlight/components";
+import MeasureExplorer from "../../components/MeasureExplorer.svelte";
+
+Every dimensionality reduction throws information away. A quality measure says how
+much, and which kind — but no single measure sees every kind of distortion, and a
+projection that scores well on one can be badly wrong in a way another would have
+caught immediately.
+
+sickle implements 33 of them, each reporting a per-point decomposition wherever one
+exists. Most are checked against a published reference implementation, the rest
+against a naive transcription of the definition; a couple have neither and are
+behaviour-tested only. The [verification page](/SickleJS/verification/) says which is
+which, measure by measure.
+
+<MeasureExplorer client:visible dataset="blobs_pca" measure="trustworthiness" />
+
+<CardGrid>
+    <Card title="One pass, every measure" icon="rocket">
+        The rank-based family shares a single sweep over point pairs, and produces
+        every neighbourhood size `k` at once. Computing eight measures costs what
+        computing one costs.
+    </Card>
+    <Card title="Per-point values, with a contract" icon="analytics">
+        Where a measure decomposes, the `local` array comes with a `localKind`
+        saying how it relates to the total — `mean`, `share`, `sum` or
+        `partial-mean`. The test suite checks the relationship holds.
+    </Card>
+    <Card title="Verified, and it says against what" icon="approve-check">
+        zadu, scikit-learn, scipy, gudhi, ripser, DRquality and Scagnostics2018 —
+        most to 1e-10 or better, several exact, and the looser ones named with the
+        reason. Where no reference exists, the page says so rather than implying one.
+    </Card>
+    <Card title="No framework" icon="warning">
+        ESM, CommonJS and a browser build, TypeScript types included. Workers are
+        inlined, so parallel passes need no bundler configuration.
+    </Card>
+</CardGrid>

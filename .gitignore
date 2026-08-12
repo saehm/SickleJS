@@ -1,0 +1,17 @@
+node_modules
+bak
+dist
+
+# `pnpm docs:api` — a standalone TypeDoc render for local inspection.
+# The site's copy is generated separately, by starlight-typedoc.
+.typedoc
+
+# The docs site: build output, and everything its scripts generate.
+docs/dist
+docs/.astro
+docs/src/content/docs/api
+docs/src/generated
+docs/public/data
+
+# The reference generators are Python; their bytecode is not ours to keep.
+__pycache__/

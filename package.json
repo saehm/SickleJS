@@ -1,0 +1,90 @@
+{
+    "name": "@saehrimnir/sickle",
+    "version": "0.2.0",
+    "description": "Quality metrics for dimensionality reduction projections.",
+    "type": "module",
+    "main": "./dist/sickle.cjs",
+    "module": "./dist/sickle.js",
+    "types": "./dist/sickle.d.ts",
+    "exports": {
+        ".": {
+            "import": {
+                "types": "./dist/sickle.d.ts",
+                "default": "./dist/sickle.js"
+            },
+            "require": {
+                "types": "./dist/sickle.d.cts",
+                "default": "./dist/sickle.cjs"
+            }
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist/sickle.js",
+        "dist/sickle.js.map",
+        "dist/sickle.cjs",
+        "dist/sickle.cjs.map",
+        "dist/sickle.umd.js",
+        "dist/sickle.umd.js.map",
+        "dist/sickle.d.ts",
+        "dist/sickle.d.cts",
+        "README.md"
+    ],
+    "sideEffects": false,
+    "scripts": {
+        "build": "rollup --config",
+        "typecheck": "tsc --noEmit",
+        "docs:api": "typedoc",
+        "docs:dev": "pnpm run build && pnpm --filter @saehrimnir/sickle-docs dev",
+        "docs:build": "pnpm run build && pnpm --filter @saehrimnir/sickle-docs build",
+        "docs:preview": "pnpm --filter @saehrimnir/sickle-docs preview",
+        "test": "vitest run --project node",
+        "bench": "node --experimental-strip-types bench/bench.ts",
+        "bench:parallel": "node --experimental-strip-types bench/parallel.ts",
+        "fixtures": "node --experimental-strip-types tools/export-fixtures.ts",
+        "reference": "python tools/reference.py",
+        "scagnostics:reference": "node tools/scagnostics-reference.mjs",
+        "test:browser": "vitest run --project browser",
+        "test:all": "vitest run",
+        "test:watch": "vitest --project node",
+        "gce:reference": "Rscript tools/gce-reference.R",
+        "snc:reference": "python tools/snc-reference.py",
+        "topology:reference": "python tools/topology-reference.py",
+        "dev": "rollup --config --watch",
+        "prepublishOnly": "pnpm run typecheck && pnpm run test && pnpm run build"
+    },
+    "devDependencies": {
+        "@rollup/plugin-node-resolve": "^16.0.3",
+        "@rollup/plugin-replace": "^6.0.3",
+        "@rollup/plugin-terser": "^1.0.0",
+        "@rollup/plugin-typescript": "^12.3.0",
+        "@types/d3-delaunay": "^6.0.4",
+        "@types/node": "^26.2.0",
+        "@vitest/browser": "^4.1.10",
+        "@vitest/browser-playwright": "^4.1.10",
+        "playwright": "^1.62.1",
+        "rollup": "^4.62.4",
+        "rollup-plugin-dts": "^6.5.1",
+        "tslib": "^2.8.1",
+        "typedoc": "^0.28.20",
+        "typedoc-plugin-markdown": "^4.12.0",
+        "typescript": "^5.8.3",
+        "vitest": "^4.1.10"
+    },
+    "engines": {
+        "node": ">=22"
+    },
+    "dependencies": {
+        "@saehrimnir/druidjs": "^0.9.0",
+        "d3-delaunay": "^6.0.4"
+    },
+    "license": "LGPL-3.0-or-later",
+    "packageManager": "pnpm@11.8.0",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/saehm/SickleJS.git"
+    },
+    "homepage": "https://saehm.github.io/SickleJS/",
+    "bugs": "https://github.com/saehm/SickleJS/issues",
+    "browser": "./dist/sickle.js"
+}

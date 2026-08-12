@@ -1,0 +1,42 @@
+[
+  {
+    "name": "blobs_pca",
+    "description": "4 gaussian blobs, 8-D, projected by druid PCA",
+    "n": 200,
+    "dHigh": 8,
+    "dLow": 2,
+    "clusters": 4
+  },
+  {
+    "name": "blobs_random",
+    "description": "4 gaussian blobs, 8-D, random 2-D projection (poor)",
+    "n": 200,
+    "dHigh": 8,
+    "dLow": 2,
+    "clusters": 4
+  },
+  {
+    "name": "swissroll",
+    "description": "swiss roll, unrolled to its true parameterisation",
+    "n": 300,
+    "dHigh": 3,
+    "dLow": 2,
+    "clusters": 3
+  },
+  {
+    "name": "duplicates",
+    "description": "30 exact duplicate points",
+    "n": 180,
+    "dHigh": 6,
+    "dLow": 2,
+    "clusters": 3
+  },
+  {
+    "name": "blobs_large",
+    "description": "5 gaussian blobs, 20-D, projected by druid PCA",
+    "n": 500,
+    "dHigh": 20,
+    "dLow": 2,
+    "clusters": 5
+  }
+]

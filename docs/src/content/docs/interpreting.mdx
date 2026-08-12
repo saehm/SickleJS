@@ -1,0 +1,282 @@
+---
+title: Reading a score
+description: Floors, directions, unbounded measures, and what a per-point array actually means.
+---
+
+import MetricCurve from "../../components/MetricCurve.svelte";
+import ProjectionPair from "../../components/ProjectionPair.svelte";
+import MethodComparison from "../../components/MethodComparison.svelte";
+import MeasureExplorer from "../../components/MeasureExplorer.svelte";
+import { Aside } from "@astrojs/starlight/components";
+
+A range is not an interpretation. Trustworthiness is nominally $[0, 1]$, but a
+*random* projection scores about 0.5 — so 0.7 is not "fairly good", it is barely
+better than throwing the data away.
+
+## Floors are not zero
+
+Several measures have a chance level well above the bottom of their range. Reading
+them against 0 makes every projection look respectable.
+
+Every measure here is <i class="dir">▲</i> higher is better and bounded — filled, so
+comparable across datasets — which makes the chance level a floor to climb away from
+rather than a target.
+
+| measure | | nominal range | what chance scores |
+| ---- | ---- | ---- | ---- |
+| `trustworthiness` | <i class="dir">▲</i> | $[0, 1]$ | ~0.5 |
+| `continuity` | <i class="dir">▲</i> | $[0, 1]$ | ~0.5 |
+| `tripletAccuracy` | <i class="dir">▲</i> | $[0, 1]$ | exactly 0.5 — it is a coin flip |
+| `mrreFalse`, `mrreMissing` | <i class="dir">▲</i> | $[0, 1]$ | ~0.5 |
+| `neighborhoodHit` | <i class="dir">▲</i> | $[0, 1]$ | the largest class's share |
+| `distanceConsistency` | <i class="dir">▲</i> | $[0, 1]$ | ~1 / number of classes |
+| `rnx`, `aucLogRnx` | <i class="dir">▲</i> | $[0, 1]$ | 0 — these are normalised against chance |
+| `qnx` | <i class="dir">▲</i> | $[0, 1]$ | about $k/(N-1)$ — it rises with `k` |
+| `lcmc` | <i class="dir">▲</i> | $(-1, 1]$ | 0 |
+
+These are chance levels, not floors. "Chance" here means the expected score of a
+projection carrying no information about the data — an average over such projections,
+not a constant any individual one lands on. Trustworthiness really can go below 0.5:
+its normalising constant is chosen so that the worst possible projection scores
+exactly 0. But getting there takes a layout that is actively *anti*-correlated with
+the data, and that is hard to hit by accident — it would need every point's projected
+neighbours to be its most distant points in the data, all at once, and those
+requirements pull against each other.
+
+So a score below chance is not impossible, it is informative: it means the projection
+is doing something worse than discarding the data.
+
+`qnx` is the row to watch, and it is the reason `rnx` exists. `qnx` counts the
+neighbours a projection keeps without subtracting the ones it would keep by luck, so
+its chance level climbs with `k` — towards 1 as `k` approaches N−1, where every point
+is everyone's neighbour and any projection scores perfectly. `rnx` subtracts that
+level, so 0 means chance and 1 means perfect at every `k`.
+
+The worked example below shows the size of the gap on one pair of projections: at
+k=20 the PCA projection reads 0.57 for `qnx` and 0.52 for `rnx`, while a random
+projection of the same 200 points reads 0.10 and 0.004. Your numbers will differ —
+what carries over is that the `qnx` figure flatters the random projection and the
+`rnx` figure does not.
+
+## Direction is not uniform
+
+Twelve measures are **lower is better**: `stress`, `scaleNormalizedStress`,
+`residualVariance`, `nonMetricStress`, `sammonStress`, `curvilinearStress`, `nerv`,
+`daviesBouldin`, `classificationError`, `gabrielClassificationError`,
+`topologicalH0` and `topologicalH1`.
+
+Everything else is higher is better, except `scagnostics`, which has no direction at
+all — a high `clumpy` is neither good nor bad, it is a description of the shape. If
+you build a dashboard, flip the twelve or the reader will infer the opposite of what
+you meant. Every measure states its direction in its TSDoc, and
+[the matrix](/SickleJS/choosing/#the-full-matrix) is generated from those statements.
+
+## Unbounded measures need a baseline
+
+Twelve measures have no upper limit: the separability ratios `calinskiHarabasz`,
+`dunnIndex`, `averageBetweenWithin`, `hypothesisMargin` (unbounded below too,
+$(-\infty, \infty)$), `daviesBouldin` and `gabrielClassificationError`; and the
+embedding costs, measured in the data's own units — `stress`, `sammonStress`,
+`curvilinearStress`, `nerv`, `topologicalH0` and `topologicalH1`.
+
+A value of 4 686 for Calinski–Harabasz means nothing on its own. These compare only
+**within one dataset**, between projections of the *same* points — never across
+datasets, and never against a published number from a different one.
+
+### What that looks like
+
+Four DruidJS projections of the same 200 points, the 8-D blobs used throughout this
+page:
+
+<MethodComparison client:visible dataset="blobs_pca" />
+
+Down a column, Calinski–Harabasz does real work: t-SNE packs these blobs tighter than
+UMAP does and the 5× ratio says so. Same points, same labels — a fair comparison.
+
+The same four methods on the 300-point swissroll:
+
+<MethodComparison client:visible dataset="swissroll" />
+
+The **amber** columns — the first three, `calinskiHarabasz`, `daviesBouldin` and
+`dunnIndex` — all move by one to two orders of magnitude, for every method at once.
+Nothing got worse: the swissroll's classes are segments along a rolled-up ribbon, so
+they stay elongated however you unroll them, and the between-to-within variance ratio
+is simply small for shapes like that. 188 is the *best* Calinski–Harabasz here and
+would be a poor one on the blobs.
+
+The **purple** columns — the last three, `silhouette`, `trustworthiness` and
+`scaleNormalizedStress` — are the control. Being bounded, they stay on one scale
+across both tables: scale-normalised stress runs 0.07–0.34 on the blobs and 0.21–0.45
+on the swissroll. Those numbers describe a projection, not a dataset. That is the
+practical difference the arrow colours encode.
+
+Both tables also disagree with themselves, consistently: t-SNE has the best
+trustworthiness (0.983, 0.989), StressMDS the best scale-normalised stress, and on
+the swissroll t-SNE has the worst Calinski–Harabasz. Each asks a different question —
+tight balls, real neighbourhoods, surviving distances — so ranking methods by any one
+of them ranks them on that property alone. StressMDS winning the stress column is the
+reassuring case: it is the only method here that optimises that quantity directly.
+
+<Aside type="note" title="Reproducing these">
+`Randomizer.seed = 1212`, t-SNE at perplexity 30, UMAP at `n_neighbors: 15`,
+StressMDS at `weights: WEIGHTS_UNIFORM` so it minimises raw Kruskal stress rather than
+druid's default elastic weighting. t-SNE and UMAP are stochastic and hyper-parameter
+sensitive; another seed moves these numbers and can reorder rows. The gap between the
+two tables is the durable part, not the digits.
+</Aside>
+
+The two stresses that *are* bounded are the normalised ones: `scaleNormalizedStress`
+and `nonMetricStress` both divide by a denominator their numerator cannot exceed, so
+both live in $[0, 1]$ — which is what lets the last column above mean the same thing
+in both tables. Those two you can quote across datasets; raw `stress`, measured in
+the data's own units, you cannot.
+
+## k is a choice, and it changes the answer
+
+Almost every rank-based measure takes a neighbourhood size — `aucLogRnx` is the
+exception, and that is the point of it. A projection can win at k=5 and
+lose at k=100, so quoting one k without having looked at the curve is a decision made
+blind. The pass produces every k at once, so the curve costs nothing extra.
+
+Both curves below come from these two layouts — the same 200 points, in eight
+dimensions, projected two different ways:
+
+<ProjectionPair
+    client:visible
+    datasets={["blobs_pca", "blobs_random"]}
+    captions={["the good projection", "the random one"]}
+/>
+
+<MetricCurve
+    client:visible
+    datasets={["blobs_pca", "blobs_random"]}
+    measures={["trustworthiness", "continuity"]}
+    yMin={0}
+    yMax={1}
+/>
+
+The axis spans the measure's full $[0, 1]$ deliberately. Fitted to the data it would
+stretch the random projection's wandering across the whole panel and make it look
+like a climb; at true size it is a flat line hugging chance.
+
+The gap between the two pairs of curves is the whole point. `blobs_pca` keeps the
+four blobs apart, and its curves sit near 1. `blobs_random` is one random projection
+of the same points — the blobs land on top of each other, and its curves sit near
+$0.5$. That draw wanders a little, peaking around $0.56$ near $k = 66$ and returning
+to $0.50$ by $k_{\max}$, but it never climbs away from chance. The flatness across
+$k$, rather than the exact values, is the thing to take from the plot:
+trustworthiness and continuity divide by
+
+$$
+\frac{2}{N\,k\,(2N - 3k - 1)}
+$$
+
+the reciprocal of the largest penalty a projection can incur at that $k$, which is
+what holds chance near $0.5$ everywhere. A different random draw traces a different
+wobble through the same band.
+
+Not every measure is built that way. `qnx` counts kept neighbours without correcting
+for luck, so its chance level rises with `k` no matter what the data is: at large
+enough `k` everything is everyone's neighbour and any projection looks perfect. Writing $c$ for the co-ranking corner count,
+
+$$
+Q_{NX}(k) = \frac{c(k)}{k\,N},
+\qquad
+R_{NX}(k) = \frac{(N-1)\,Q_{NX}(k) - k}{N - 1 - k}
+$$
+
+and the subtraction is exactly what removes the floor. On the random draw above
+$Q_{NX}$ climbs from roughly $0.02$ at $k = 5$ to $1$ at $k = N-1$, while $R_{NX}$
+stays near $0$ throughout. The rise is a property of `qnx` rather than of the projection, which is why
+`rnx` — the same quantity with the chance level subtracted — is the one worth
+plotting. `aucLogRnx` integrates `rnx`, not `qnx`, and weights small neighbourhoods
+more heavily because local structure is usually what people are asking about, not
+because of anything to do with that floor.
+
+The curve stops at $k = \lfloor N/2 \rfloor$, which is where trustworthiness and continuity stop being
+defined rather than where the plot ran out of room — see
+[the k limit](/SickleJS/families/neighbourhood/#the-limit-on-k). Each measure has its own
+limit and `Curve` reports it as `kMax`.
+
+`aucLogRnx` exists to summarise this curve honestly. It is the $1/k$-weighted mean of
+$R_{NX}$, which is what "on a log scale" amounts to:
+
+$$
+\mathrm{AUC}_{\log}(R_{NX}) =
+\frac{\sum_{k=1}^{N-2} R_{NX}(k)\,/\,k}{\sum_{k=1}^{N-2} 1\,/\,k}
+$$
+
+Small neighbourhoods therefore count for more, which is usually what people mean when
+they say "local structure".
+
+## Per-point values
+
+Many measures decompose per point, and that is usually their most useful output. But
+**the arrays do not all mean the same thing**, and the `localKind` field says which:
+
+| `localKind` | meaning | how to read it |
+| ---- | ---- | ---- |
+| `mean` | a per-point score; these average to the total | colour directly, on the measure's own range |
+| `share` | each point's fraction of the total error; these sum to 1 | a large value is a large *contribution*, not a bad score |
+| `sum` | contributions in the measure's units; these sum to the total | as `share`, with units |
+| `partial-mean` | a per-point score, but some points are legitimately excluded and hold `NaN` | excluded points need their own colour — never 0 |
+| `none` | no decomposition exists | do not colour by it |
+
+A sixth kind, `weighted-mean`, is defined and enforced by `checkContract` but no
+measure currently returns it; it is there for custom metrics built on the same
+contract.
+
+<Aside type="danger" title="The trap">
+`stress` is a `share`. Averaging it does not give the stress; colouring it on a
+"0 = good, 1 = bad" scale claims every point is nearly perfect, because each point's
+share of the total is about 1/N by construction. The library declares the kind so
+this is checkable, and the test suite asserts the declared relationship holds for
+every measure.
+</Aside>
+
+Switch the measure below and watch the legend change with it — `stress` and
+`gabrielClassificationError` in particular:
+
+<MeasureExplorer client:visible dataset="blobs_pca" measure="stress" />
+
+`gabrielClassificationError` is the `partial-mean` case: leaves of the Gabriel graph
+have no defined weighting, and isolated points have no neighbours at all, so the
+measure excludes both rather than inventing a number. They are drawn hollow.
+
+### What the colours are scaled against
+
+A colour scale fitted to each dataset's own spread is quietly misleading: trustworthiness
+would span 0.50–0.99 on one projection and 0.85–1.00 on another, with the same deep
+purple at both tops. So on this site the **hue tells you which kind of scale you are
+looking at**:
+
+- **purple → pink** — the scale spans the measure's declared domain. A colour means the
+  same thing in every plot here, so two projections can be compared directly.
+- **amber** — the scale is fitted to this data. Use it to find the worst points *within*
+  one plot; do not compare it to anything else.
+
+Unbounded measures only ever get the amber scale, because there is no full range to span.
+So do `share` and `sum` contributions: each point's share is about 1/N, so drawing them
+over their nominal `[0, 1]` would paint every point the same colour.
+
+Where a defensible threshold exists, a third mode cuts the scale into bands. These are
+kept deliberately sparse — a published convention where one exists (silhouette follows
+Rousseeuw's rule of thumb), and otherwise only the chance level, which is a fact about
+the measure rather than an opinion about it. Nothing makes 0.75 the boundary between
+"fair" and "good" for trustworthiness, so no such boundary is drawn.
+
+## What "verified" means here
+
+Three tiers, and the [verification page](/SickleJS/verification/) says which applies to
+each measure:
+
+- **Against a reference implementation** — zadu, scikit-learn, gudhi, ripser,
+  DRquality or Scagnostics2018. Most agree to 1e-10 or better and several are exact;
+  a few are looser for reasons the verification page names case by case.
+- **Against the published definition** — a naive transcription of the formula, where
+  no reference implementation exists.
+- **Behaviour-tested only** — plausible and contract-satisfying, with nothing external
+  to compare against.
+
+A measure in the third tier is not wrong; it is less checked, and you should know
+which ones they are.

@@ -1,0 +1,176 @@
+---
+title: Topology
+description: Persistent homology in degree 0 and 1 — merge structure and loops.
+sidebar:
+    order: 6
+---
+
+import Disagreement from "../../../components/Disagreement.svelte";
+import { Aside } from "@astrojs/starlight/components";
+import References from "../../../components/References.svelte";
+import PersistenceDiagram from "../../../components/PersistenceDiagram.svelte";
+
+**The question:** does the projection have the same *shape* as the data — the same
+connected pieces, the same holes?
+
+Every other measure here is local or metric. These two are neither: they ask about
+structure that no amount of looking at individual neighbourhoods reveals.
+
+## H0 — merge structure
+
+Grow a ball around every point. As the radius increases, separate pieces merge into
+one. The radii at which merges happen are the degree-0 persistence diagram, and they
+characterise how the data is clustered at every scale simultaneously.
+
+`topologicalH0` computes that for both spaces and compares the diagrams.
+
+```js
+// on blobs_pca, the projection used throughout the site
+topologicalH0(hd, ld).value;                            // 0.0528
+topologicalH0(hd, ld, { distance: "wasserstein" }).value;
+```
+
+<Aside type="note" title="H0 is the MST, exactly">
+The degree-0 persistence diagram of a Vietoris–Rips filtration is precisely the set of
+edge lengths of the Euclidean minimum spanning tree. Not approximately — it is an
+identity. So H0 costs an MST, not a homology computation: `persistenceH0` runs Prim's
+algorithm on the point cloud, computing distances as it goes, and returns the edge
+lengths sorted with the endpoints attached.
+</Aside>
+
+## H1 — loops
+
+The measure that catches the failure nothing else does. Take a circle of points and
+cut it open into an arc: every local neighbourhood survives the operation, so
+trustworthiness reads 0.995 and H0 barely moves.
+
+<Disagreement client:visible id="loop-unrolled" />
+
+The data has one loop, the projection has none. `topologicalH1` reads 0.389.
+
+```js
+topologicalH1(hd, ld, { maxPoints: 200 }).value;
+```
+
+The result carries `hdDiagram` and `ldDiagram`, the birth–death pairs themselves.
+Counting them is often the most legible thing to report: *one loop in the data, none
+in the projection* says more than 0.389 does.
+
+<Aside type="danger" title="H1 is O(N³) and capped">
+It enumerates every triangle whose three edges all fall below the filtration threshold
+and reduces a boundary matrix over $\mathbb{Z}/2$. The threshold prunes hard, but the
+bound is $\binom{N}{3}$ — 1.3 million at $N = 200$, which is the number the error
+message quotes. The cap is `maxPoints: 200` by default, and raising it is
+rarely wise. Subsample deliberately rather than waiting; the numbers on this site come
+from an evenly spaced subsample of 150 points and the pages say so.
+</Aside>
+
+## Reading these
+
+Both are $[0, \infty)$ and **lower is better**, which is the opposite direction to most of
+the library. 0 means the diagrams match: identical merge structure for H0, the same
+loops at the same scales for H1.
+
+Both normalise by the diameter of each space by default, so they are comparable across
+datasets of different scale. The option is spelled differently in each: `topologicalH0`
+takes `scale: "diameter" | "none"`, `topologicalH1` takes `normalize: boolean`. They
+are not interchangeable — `{ normalize: false }` on H0 is silently ignored.
+
+```js
+topologicalH0(hd, ld, { scale: "none" }).value;      // raw units
+topologicalH1(hd, ld, { normalize: false }).value;   // raw units
+```
+
+`topologicalH1` does not decompose per point — a loop is a property of the whole point
+cloud, not of any one point — so it is `localKind: "none"`. `topologicalH0` does, as
+`localKind: "share"`: every rank's discrepancy between the two diagrams is split four
+ways among the endpoints of the two MST edges it came from, and the shares sum to 1.
+
+## The diagram tools
+
+`topologicalH0` and `topologicalH1` each build two diagrams and reduce them to one
+number. Both halves are exposed, so you can look at the diagrams themselves — which
+is usually more informative than the score.
+
+Both degrees below, for the circle and the arc. The rule in either case is **how long
+a feature survived**: a long bar, or a mark far from the diagonal, is real structure;
+a short bar, or a mark hugging the diagonal, is noise.
+
+<PersistenceDiagram client:visible />
+
+The two are drawn differently because they are different kinds of thing. Every H<sub>0</sub>
+feature is born at 0 — a point is its own component from the start — so a birth/death
+diagram would stack all 49 of them on one vertical line and the diagonal would carry no
+information; it is a one-dimensional quantity, and a barcode shows it as one.
+H<sub>1</sub> births genuinely differ, so there the diagonal is the whole point.
+
+The tools, on the same pair:
+
+```js
+const circle = hd;
+const arc = ld;
+
+// H0 — one diagram per space. Births are all 0; the deaths are the MST's
+// edge lengths, ascending, with the endpoints each merge came from.
+const a = persistenceH0(circle);
+const b = persistenceH0(arc);
+a.deaths.length;          // 49 — always n - 1
+a.diameter;               // 2.0251 — the natural scale of this diagram
+
+bottleneckH0(a.deaths, b.deaths);       // 0.0790 — the worst single mismatch
+wassersteinH0(a.deaths, b.deaths, 1);   // 3.5816 — the total mismatch
+
+// H1 — birth/death pairs, one per loop.
+const loops = ripsH1(circle, { maxPoints: 200 });
+loops;                    // [[0.1590, 1.7329]] — one loop, persistence 1.57
+ripsH1(arc).length;       // 0 — the arc has none
+
+bottleneckDistance(loops, ripsH1(arc));  // compares any two diagrams
+```
+
+**These are raw units; the plot above is not.** Every function here works on the
+diagrams exactly as given, in the data's own scale, while `topologicalH0` and
+`topologicalH1` divide each space by its own diameter first so that datasets of
+different size stay comparable. The circle's diameter is 2.0251, which is why the loop
+reads `[0.159, 1.733]` from `ripsH1` and sits at `(0.079, 0.856)` on the normalised
+axes above — and why the raw bottleneck of 0.0790 becomes a `topologicalH0` of 0.0390
+for this pair. (Every number on this page except the 0.0528 at the top is this
+50-point circle and arc; 0.0528 is blobs_pca.)
+
+The difference between the two H0 distances is worth knowing. **Bottleneck** is the
+largest single discrepancy, so it ignores how many features disagree — one badly
+placed merge sets the score. **Wasserstein** sums the discrepancies, so it grows with
+how *much* of the structure moved. Bottleneck is the default because it is stable
+under small perturbations; pass `{ distance: "wasserstein" }` to `topologicalH0` when
+you care about the total.
+
+<Aside type="note" title="H0 is the minimum spanning tree">
+`persistenceH0` returns `source` and `target` alongside `deaths`: the MST edge each
+merge came from. That makes the diagram drawable *on* the scatterplot — each death is
+a specific edge between two specific points — which no other measure here offers.
+</Aside>
+
+## Cost
+
+H0 is $O(N^2 D)$, dominated by the distance computation for the MST. H1 is $O(N^3)$
+and capped at 200 points.
+
+## Verification
+
+H0 death times are checked to 1e-12 against an independent Prim MST computed in the
+fixture generator, which is the MST identity stated above. `topologicalH0` itself is
+checked against [gudhi](https://gudhi.inria.fr/) — bottleneck to 1e-12, Wasserstein
+at $p = 1$ and $p = 2$ to 1e-10. [ripser](https://github.com/Ripser/ripser) appears
+only inside the generator, as an aggregate cross-check on the death times; it computes
+in float32 and agrees to ~1e-7, so nothing is asserted against it.
+
+H1 diagrams are checked against ripser to 1e-5 absolute, on constructed shapes — a
+circle, two circles, a torus — where the correct answer is known independently: a
+circle must have exactly one loop. `bottleneckDistance` on general diagrams is checked
+against gudhi to 1e-12.
+
+## References
+
+Edelsbrunner & Harer, *Computational Topology: An Introduction*, AMS (2010).
+
+<References category="Topology" />

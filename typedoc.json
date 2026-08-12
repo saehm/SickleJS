@@ -1,0 +1,55 @@
+{
+    "entryPoints": [
+        "src/index.ts"
+    ],
+    "plugin": [
+        "typedoc-plugin-markdown"
+    ],
+    "out": "./.typedoc",
+    "excludeExternals": true,
+    "excludeInternal": true,
+    "excludePrivate": true,
+    "excludeProtected": true,
+    "categorizeByGroup": false,
+    "categoryOrder": [
+        "Neighbourhood",
+        "Distance",
+        "Embedding cost",
+        "Class separability",
+        "Structure",
+        "Topology",
+        "Cluster reliability",
+        "Scagnostics",
+        "Input",
+        "Passes",
+        "*"
+    ],
+    "groupOrder": [
+        "Neighbourhood",
+        "Distance",
+        "Embedding cost",
+        "Class separability",
+        "Structure",
+        "Topology",
+        "Cluster reliability",
+        "Scagnostics",
+        "Input",
+        "Passes",
+        "*"
+    ],
+    "navigation": {
+        "includeFolders": true,
+        "compactFolders": false,
+        "includeCategories": true,
+        "includeGroups": false
+    },
+    "indexFormat": "table",
+    "parametersFormat": "table",
+    "propertiesFormat": "table",
+    "enumMembersFormat": "table",
+    "interfacePropertiesFormat": "table",
+    "typeDeclarationFormat": "table",
+    "expandObjects": true,
+    "expandParameters": true,
+    "useCodeBlocks": true
+}

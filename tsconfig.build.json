@@ -1,0 +1,19 @@
+{
+    // Rollup resolves modules itself, so the build overrides the editor
+    // settings that exist for Node's native TypeScript execution:
+    // "allowImportingTsExtensions" needs noEmit, and NodeNext resolution
+    // conflicts with the bundler's own. Rollup only needs the transpile.
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "noEmit": false,
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "allowImportingTsExtensions": true,
+        "emitDeclarationOnly": false,
+        "declaration": false,
+        "declarationMap": false,
+        "sourceMap": true,
+        "verbatimModuleSyntax": false
+    },
+    "include": ["src/**/*.ts"]
+}

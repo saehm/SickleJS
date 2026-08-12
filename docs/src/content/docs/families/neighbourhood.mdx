@@ -1,0 +1,240 @@
+---
+title: Neighbourhood
+description: Trustworthiness, continuity, Q_NX, R_NX, LCMC, AUC and MRRE — is the local structure still there?
+sidebar:
+    order: 1
+---
+
+import MetricCurve from "../../../components/MetricCurve.svelte";
+import ProjectionPair from "../../../components/ProjectionPair.svelte";
+import MeasureExplorer from "../../../components/MeasureExplorer.svelte";
+import { Aside } from "@astrojs/starlight/components";
+import References from "../../../components/References.svelte";
+
+**The question:** if two points are drawn side by side, were they neighbours in the
+data — and if they were neighbours in the data, are they still drawn together?
+
+These are the measures most people mean by "projection quality". All eight are
+read-outs of one shared structure, the co-ranking matrix, so computing all of them
+costs what computing one costs.
+
+## The measures
+
+All eight are <i class="dir">▲</i> higher is better, and all are bounded.
+
+| measure | | penalises | range |
+| ---- | ---- | ---- | ---- |
+| `trustworthiness` | <i class="dir">▲</i> | points drawn together that were far apart — invented structure | $[0, 1]$, floor ~0.5 |
+| `continuity` | <i class="dir">▲</i> | points drawn apart that were together — hidden structure | $[0, 1]$, floor ~0.5 |
+| `qnx` | <i class="dir">▲</i> | both, symmetrically: the fraction of k-neighbourhoods preserved | $[0, 1]$, floor rises with k |
+| `rnx` | <i class="dir">▲</i> | the same, rescaled so 0 is a random projection | $[0, 1]$ |
+| `lcmc` | <i class="dir">▲</i> | Q_NX corrected for the neighbours you would keep by chance | $(-1, 1]$ |
+| `aucLogRnx` | <i class="dir">▲</i> | nothing — it integrates R_NX over all k on a log scale | $[0, 1]$ |
+| `mrreFalse` | <i class="dir">▲</i> | rank errors among the neighbours you see, weighted by rank | $[0, 1]$ |
+| `mrreMissing` | <i class="dir">▲</i> | rank errors among the neighbours you lost | $[0, 1]$ |
+
+Trustworthiness and continuity are the pair to reach for first. They are not
+redundant: they catch opposite errors, and a projection can be excellent at one and
+poor at the other.
+
+## Using them
+
+All eight read out of the same `coRanking`, so the pass runs once:
+
+```js
+import * as sickle from "@saehrimnir/sickle";
+
+const a = sickle.analyze(X, Y, { localK: [20] });
+const cr = a.coRanking;
+
+// the complementary pair — invented structure, and hidden structure
+sickle.trustworthiness(cr, 20);   // 0.9659
+sickle.continuity(cr, 20);        // 0.9709
+
+// overlap of the k-neighbourhoods, raw and chance-corrected
+sickle.qnx(cr, 20);               // 0.5657
+sickle.lcmc(cr, 20);              // 0.4652 — Q_NX minus the chance level
+sickle.rnx(cr, 20);               // 0.5172 — rescaled so chance is 0
+
+// rank errors, weighted by how badly the rank moved
+sickle.mrreFalse(cr, 20);         // 0.9232 — among the neighbours you see
+sickle.mrreMissing(cr, 20);       // 0.9400 — among the ones you lost
+
+// every k at once, so there is no k to choose
+sickle.aucLogRnx(cr);             // 0.4658
+```
+
+<MeasureExplorer client:visible category="Neighbourhood" dataset="blobs_pca" measure="trustworthiness" />
+
+## Every k at once
+
+The pass builds the whole curve, not one value. Reading a single k without looking at
+the curve is a decision made blind, and the curve is free:
+
+```js
+const curve = sickle.trustworthinessCurve(a.coRanking);
+curve.values[20];                   // same number as sickle.trustworthiness(cr, 20)
+```
+
+The two datasets the curves come from:
+
+<ProjectionPair
+    client:visible
+    datasets={["blobs_pca", "swissroll"]}
+    captions={["blobs, PCA", "swiss roll, unrolled"]}
+/>
+
+<MetricCurve
+    client:visible
+    datasets={["blobs_pca", "swissroll"]}
+    measures={["trustworthiness", "continuity"]}
+    yMin={0.5}
+    yMax={1}
+/>
+
+The axis runs from chance to perfect, $[0.5, 1]$, rather than fitting itself to the
+data: for these two measures $0.5$ is the floor that matters, so the height of a curve
+above the bottom of the panel is the amount by which the projection beats throwing the
+data away. Both datasets are then read at the same size rather than against each
+other's extremes. (Scores below chance are possible, and the axis widens to show them
+rather than clipping.)
+
+The curves point in opposite directions, and that is the whole reason to plot them.
+The blobs stay near 1 at every k: PCA keeps four well-separated groups apart, and
+nothing changes as the neighbourhood grows. The swiss roll starts high and falls —
+$0.953$ at $k = 5$, $0.849$ at $k = 20$, $0.736$ at $k = 50$ — which is exactly what
+unrolling a manifold does. Points that are close along the sheet stay close, so small
+neighbourhoods survive; points on adjacent coils were near in the ambient space and
+end up far apart once the roll is flattened, so large neighbourhoods do not. A single
+$k$ would have called this projection either excellent or mediocre depending on which
+$k$ you picked.
+
+<Aside type="note" title="Which measures have a rising floor">
+Not these two. Trustworthiness and continuity divide by the largest penalty available
+at each $k$, so their chance level stays near $0.5$ all the way along — the swiss roll
+curve above falls rather than drifting up. It is `qnx` whose floor climbs: it counts
+preserved neighbours without subtracting the ones luck would supply, so it tends to 1
+as $k$ approaches $N-1$, where every point is everyone's neighbour. `rnx` subtracts
+that level and `aucLogRnx` integrates `rnx`, which is why those two compare cleanly
+across different $k$.
+</Aside>
+
+### The limit on k
+
+Each measure has a largest `k` it is defined for, and asking for more throws rather
+than returning a plausible wrong number:
+
+```js
+sickle.maxKTrustworthiness(n);   // floor(n / 2) — trustworthiness, continuity
+sickle.maxKQnx(n);               // n - 1 — Q_NX, LCMC
+sickle.maxKRnx(n);               // n - 2 — R_NX
+```
+
+The trustworthiness limit is worth understanding, because it is a property of the
+measure rather than a safety margin. Writing $r_{ij}$ for the rank of $j$ among $i$'s
+neighbours in the data and $s_{ij}$ for its rank in the projection,
+
+$$
+T(k) \;=\; 1 \;-\; \frac{2}{N k (2N - 3k - 1)} \sum_{i} \sum_{j \in U_k(i)} \bigl(r_{ij} - k\bigr)
+$$
+
+where $U_k(i) = \{\, j : s_{ij} \le k < r_{ij} \,\}$ is the set of points drawn inside
+$i$'s neighbourhood that do not belong there.
+
+That constant is the reciprocal of the **worst** penalty a projection can incur, so
+the worst case scores exactly $0$. Its value depends on how large the penalised set
+$U_k(i)$ can get, and there are two regimes:
+
+$$
+\max \sum_i \sum_{j \in U_k(i)} (r_{ij} - k) \;=\;
+\begin{cases}
+N \left[ k(N-k) - \dfrac{k(k+1)}{2} \right], & k \le N/2 \\[1.4ex]
+N \, \dfrac{(N-1-k)(N-k)}{2}, & k > N/2
+\end{cases}
+$$
+
+The split is intuitive. $U_k(i)$ holds at most $k$ points, but it can only draw from
+the $N-1-k$ points ranked beyond $k$. While $k \le N/2$ there are enough of those to
+fill every slot, and at $k = N/2$ exactly: a maximally wrong projection puts the
+whole far half into the near half's neighbourhood. Past that, $N-1-k < k$ and the
+worst case is limited by how many wrong points *exist* rather than by how many slots
+there are.
+
+Only the first expression matches the constant. The two agree at $k = \lfloor N/2
+\rfloor$ and diverge immediately after, so above the limit the constant
+over-normalises and the score runs below its own range — it reaches $-6.61$ on a
+random projection at $N = 200$, $k = 132$. `Curve.kMax` reports the limit, and
+entries past it are `NaN`.
+
+## Per-point values
+
+`trustworthiness`, `continuity` and both MRRE variants decompose per point, with
+`localKind: "mean"` — they average to the total, so you can colour a scatterplot by
+them directly on the measure's own scale.
+
+```js
+const local = sickle.localTrustworthiness(a.coRanking, 20);
+// local[i] is point i's own trustworthiness; mean(local) === sickle.trustworthiness(cr, 20)
+```
+
+There is no per-point *curve*. The aggregate curve is free because the pass already
+counts every rank, but a per-point value at every $k$ would be an $N \times k_{\max}$
+table — at $N = 10\,000$ that is 5·10⁷ doubles, some 400 MB, for one measure. So the
+pass collects per-point arrays only at the $k$ you name, and naming several gives you
+the curve sampled where you care:
+
+```js
+const a = sickle.analyze(X, Y, { localK: [5, 10, 20, 50] });
+sickle.localTrustworthiness(a.coRanking, 5);   // one array per requested k
+sickle.localTrustworthiness(a.coRanking, 50);
+```
+
+The same four `k` are available from `localContinuity`, `localMrreFalse` and
+`localMrreMissing` — one pass, no extra sweep.
+
+This is the most useful output of the family. An aggregate of 0.96 can hide a dozen
+points that are completely misplaced, and those points are usually the interesting
+ones.
+
+<Aside type="caution" title="`localK` must be requested">
+Per-point values at a given k are only available if the pass was told to collect
+them: `analyze(hd, ld, { localK: [20] })`. Asking for a k the pass did not collect
+throws, naming the option.
+</Aside>
+
+## What they miss
+
+Everything that is not a neighbourhood. A projection can preserve every local
+neighbourhood perfectly and still:
+
+- **cut a loop open** — [`topologicalH1`](/SickleJS/families/topology/) catches it,
+  trustworthiness reads 0.995
+- **flatten the density contrast** — [`densityPreservation`](/SickleJS/families/structure/)
+  catches it, trustworthiness reads 0.93
+- **split one group into two** — [`snc`](/SickleJS/families/snc/) catches it,
+  trustworthiness reads 0.997
+
+All three are in [the disagreement gallery](/SickleJS/disagreements/) with the numbers.
+
+## Cost
+
+$O(N^2 \log N)$ for the pass, $O(1)$ per read-out afterwards. Past ~5 000 points use
+`analyzeAsync`, which is bit-identical and scales with cores.
+
+## Verification
+
+Five are checked against [zadu](https://github.com/hj-n/zadu): trustworthiness,
+continuity and both MRRE variants to 1e-10, LCMC to 1e-9 — zadu's LCMC path goes
+through faiss in float32, so near-ties can rank differently.
+
+`qnx` has no zadu fixture; it is checked to 1e-10 against a naive transcription of
+the definition kept in the test suite. `rnx` and `aucLogRnx` are checked only against
+invariants: exactly 1 for an identity projection, and unchanged under row
+permutation and between the sequential and parallel paths.
+
+Tie-breaking under equal distances is the one place implementations can
+legitimately differ — see [Verification](/SickleJS/verification/#tie-breaking).
+
+## References
+
+<References category="Neighbourhood" />

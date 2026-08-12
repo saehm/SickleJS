@@ -1,0 +1,54 @@
+name: CI
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+    workflow_dispatch:
+
+# A newer push to the same branch supersedes the run in flight; main is never
+# cancelled, so the badge always reflects a completed run.
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install pnpm
+              uses: pnpm/action-setup@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: 'pnpm'
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Type check
+              run: pnpm typecheck
+
+            # The maths. Parity against the committed zadu/scikit-learn/scipy
+            # fixtures runs here, so CI needs neither Python nor zadu.
+            - name: Run tests
+              run: pnpm test
+
+            - name: Install Playwright browsers
+              run: pnpm exec playwright install --with-deps chromium firefox webkit
+
+            # Small on purpose: it proves the library loads in a browser and that
+            # the inlined worker spawns on all three engines. Module workers and
+            # transferable ArrayBuffers are exactly what differs between them.
+            - name: Run browser tests
+              run: pnpm test:browser
+
+            # Last, because a build that fails after green tests is a packaging
+            # problem, and the distinction is worth keeping in the log.
+            - name: Build
+              run: pnpm build

@@ -1,0 +1,126 @@
+---
+title: Embedding cost
+description: Sammon stress, CCA stress and NeRV — the objective functions of classic projection methods, used as measures.
+sidebar:
+    order: 3
+---
+
+import MeasureExplorer from "../../../components/MeasureExplorer.svelte";
+import { Aside } from "@astrojs/starlight/components";
+import References from "../../../components/References.svelte";
+
+**The question:** how well does this projection do at what a particular method was
+*trying* to do?
+
+These three are the objective functions of Sammon mapping, curvilinear component
+analysis and neighbour retrieval visualiser. Each weights distance error differently,
+and the weighting is the interesting part.
+
+## The measures
+
+Writing $d_{ij}$ for the distance between two points **in the data** and $\hat{d}_{ij}$
+for the distance **in the projection**, all three penalise the same error
+$d_{ij} - \hat{d}_{ij}$ and differ only in what they multiply it by:
+
+<i class="dir">▲</i> higher is better · <i class="dir">▼</i> lower is better · <i class="dir open">△</i><i class="dir open">▽</i> hollow: unbounded, so the number is comparable only between projections of the same data.
+
+| measure | | weights errors by | range |
+| ---- | ---- | ---- | ---- |
+| `sammonStress` | <i class="dir open">▽</i> | $1 / d_{ij}$ — short distances matter most | $[0, \infty)$ |
+| `curvilinearStress` | <i class="dir open">▽</i> | $F(\hat{d}_{ij})$, a kernel on the *projected* distance | $[0, \infty)$ |
+| `nerv` | <i class="dir open">▽</i> | a trade-off between missing and false neighbours, set by $\lambda$ | $[0, \infty)$ |
+
+$$
+\begin{aligned}
+\textbf{Sammon} \quad & \frac{\sum_{i<j} (d_{ij} - \hat{d}_{ij})^2 / d_{ij}}{\sum_{i<j} d_{ij}} \\[1.2ex]
+\textbf{CCA} \quad & \frac{\sum_{i<j} (d_{ij} - \hat{d}_{ij})^2 \; F(\hat{d}_{ij})}{\sum_{i<j} d_{ij}^2 \; F(\hat{d}_{ij})}
+\end{aligned}
+$$
+
+The numerators are the published sums; the denominators are sickle's, and make the
+values comparable across datasets. Both `value` fields are the ratio, so a number
+quoted here will not match a bare transcription of the classical formula.
+`curvilinearStress` also returns `raw`, the unnormalised numerator.
+Sammon skips pairs at $d_{ij} = 0$, which would divide by zero.
+
+The difference between the two is worth stating plainly, and it is visible in which
+distance the weight depends on. Sammon weights by $d_{ij}$, the **original** distance:
+getting a genuinely-close pair wrong is expensive. CCA weights by $\hat{d}_{ij}$, the
+**projected** one: an error is only expensive if the points ended up drawn near each
+other. That makes CCA tolerant of tearing a manifold apart — which is the point, since
+a tear is often the only way to flatten something.
+
+## Using them
+
+Sammon comes with the default pass. CCA needs its kernel width, NeRV is its own pass:
+
+```js
+const a = analyze(hd, ld, { ccaLambda: 1 });
+
+sammonStress(a.embedding).value;        // 0.0238
+curvilinearStress(a.embedding).value;   // 0.5316
+
+const p = nervPass(hd, ld, { lambda: 0.5, perplexity: 30 });
+nerv(p).value;
+```
+
+<MeasureExplorer client:visible category="Embedding cost" dataset="blobs_pca" measure="sammonStress" />
+
+<Aside type="caution" title="`ccaLambda` must be requested">
+`curvilinearStress` throws if the pass was not given a positive `ccaLambda` — omitting it
+and passing $\lambda \le 0$ both leave the accumulators off, and both raise the same error.
+There is no sensible default: $\lambda$ is the neighbourhood width in the units of your
+projection, so the library will not guess it.
+</Aside>
+
+`ccaKernel` picks $F$. The default `"exponential"` is $F(\hat{d}) = e^{-\hat{d}/\lambda}$, a
+smooth decay; `"step"` is the original bounded kernel, $F(\hat{d}) = 1$ for
+$\hat{d} \le \lambda$ and 0 beyond.
+
+## NeRV, and what λ does
+
+NeRV frames the projection as an information retrieval problem: a viewer looking at
+the plot retrieves neighbours, and can make two kinds of mistake.
+
+- $\lambda = 0$ — only false neighbours are penalised. Precision, $KL(q \| p)$.
+- $\lambda = 1$ — only missing neighbours are penalised. Recall, $KL(p \| q)$. This is
+  what SNE and t-SNE minimise.
+- $\lambda = 0.5$ — the default here, both equally.
+
+`nerv()` returns `recall` and `precision` alongside the combined value, so you can see
+which side the cost is coming from rather than only the total.
+
+The per-point $\sigma$ is fitted in the high-dimensional space by bisection to match the
+requested perplexity, then reused for the projection — the paper's formulation, and
+the reason this is the slowest pass in the library.
+
+## Per-point values
+
+`sammonStress` and `curvilinearStress` have `localKind: "sum"` — the entries are
+contributions in the measure's own units and add up to the total. As with `share`,
+a large value is a large contribution, not a bad score.
+
+NeRV's `recall` and `precision` are **scalars** — the mean per-point $KL(p \| q)$ and
+$KL(q \| p)$ over the dataset, not per-point arrays. What it does give per point is
+`local`, with `localKind: "mean"`: each entry is that point's own
+$\lambda \, KL(p_i \| q_i) + (1 - \lambda) \, KL(q_i \| p_i)$, so the entries average to
+the reported value and say *which* points are being misrepresented. The split by
+direction is only available in aggregate. The pass object also carries `sigma`, the
+fitted per-point bandwidth.
+
+## Cost
+
+`sammonStress` and `curvilinearStress` are $O(1)$ read-outs. NeRV is $O(N^2 D)$ with a
+bisection per point on top, and benefits most from `nervAsync`.
+
+## Verification
+
+All three are **checked against the published definition**, not against a reference
+implementation — there is no canonical one to compare against. Each is verified
+against an independent naive transcription of the formula in the test suite, and
+NeRV's σ search is checked to produce exactly the requested perplexity. This is the
+second verification tier; see [Verification](/SickleJS/verification/).
+
+## References
+
+<References category="Embedding cost" />

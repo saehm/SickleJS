@@ -1,0 +1,112 @@
+---
+title: Cluster reliability
+description: Steadiness and cohesiveness — does the projection invent groups, or break real ones apart?
+sidebar:
+    order: 7
+---
+
+import Disagreement from "../../../components/Disagreement.svelte";
+import { Aside } from "@astrojs/starlight/components";
+import References from "../../../components/References.svelte";
+
+**The question:** if you see a cluster in the plot, is it one cluster in the data —
+and if the data has a cluster, is it drawn as one?
+
+This is the *cluster-level* version of trustworthiness and continuity, and it catches
+something they cannot. Trustworthiness works point by point, so a projection that
+takes one group and slides it apart into two halves keeps every local neighbourhood
+intact and scores 0.997.
+
+## The two numbers
+
+`snc` returns both at once, because they are the two directions of the same idea:
+
+- **Steadiness** — does a group that looks separate in the projection stay together
+  in the data? Low steadiness means the projection has **invented** a separation.
+- **Cohesiveness** — does a group that is together in the data stay together in the
+  projection? Low cohesiveness means the projection has **split** something real.
+
+```js
+const s = snc(hd, ld, { iterations: 100, seed: 42 });
+s.steadiness;     // 0.9097
+s.cohesiveness;   // 0.7058
+```
+
+## The case it exists for
+
+One group in the data, drawn as two:
+
+<Disagreement client:visible id="group-split" />
+
+Trustworthiness 0.997, continuity 0.971 — the point-level view sees nothing wrong.
+Cohesiveness 0.314, because the group that was together is now two things.
+
+Note it is cohesiveness that drops, not steadiness. The projection has not merged
+anything that was apart; it has split something that was together. Getting these two
+the right way round is the whole reason they are reported separately.
+
+<Aside type="caution" title="This one is stochastic">
+`snc` repeatedly draws random cluster pairs, so it is a Monte Carlo estimate. It takes
+a `seed` and is exactly reproducible with one — but two different seeds give slightly
+different numbers, unlike every other measure in the library. The test suite asserts
+both: two runs at the same seed are exactly equal, and `snc(v, v)` is exactly 1.
+
+Raise `iterations` for a tighter estimate. At the default 150 the spread across seeds
+is around ±0.005 — the test suite asserts only the loose bound that it stays under
+0.02, and that more iterations never widen it. Either way it is much smaller than the
+range the measure spans across projections, but not nothing.
+</Aside>
+
+## How it works
+
+Neighbours are shared-nearest-neighbour, built through an inverted index in $O(N k^2)$
+rather than the obvious $O(N^2 k)$. A cluster is then *drawn*, not found: a random
+walk starts at a random point and steps along the k-NN graph, accepting each edge with
+probability equal to its shared-neighbour similarity, until it has taken
+`walkRatio * N` steps. Steadiness draws its walks in the projection, cohesiveness in
+the data.
+
+Each drawn cluster is partitioned in the *opposite* space by DruidJS's seeded k-means
+into $\sqrt{|C|}$ groups, and every pair of groups is scored by how much their
+shared-neighbour distance changed between the two spaces. That is where the k-means
+comes in — it splits a cluster into comparable pieces, it does not find the clusters.
+Using it rather than HDBSCAN keeps the whole thing reproducible given a seed and
+avoids a second clustering dependency.
+
+Points are capped at `maxPoints: 6000` by default, because the pairwise structure is
+$O(N^2)$ in memory.
+
+## Reading these
+
+Both are $[0, 1]$, higher is better, and there is no meaningful chance floor — a
+random projection scores low on both. 1.0 on both means every cluster at every scale
+survives in both directions; `snc(v, v)` on identical spaces returns exactly 1.
+
+The unit of analysis is a cluster pair, not a point, so `snc` is not a `MetricResult`
+and has no `localKind`. Per-point contributions are still available: pass
+`local: true` and the result carries `localSteadiness` and `localCohesiveness`, each
+point's share of the distortion it took part in, normalised to $[0, 1]$ and inverted
+so that high is good, as everywhere else.
+
+```js
+const s = snc(hd, ld, { iterations: 150, seed: 42, local: true });
+s.localSteadiness[i];   // 1 means point i was never part of a distorted pair
+```
+
+It costs memory, which is why it is off by default.
+
+## Cost
+
+$O(N^2)$ in both time and memory, plus the k-means iterations. This is one of the four
+measures that should not run live in a browser.
+
+## Verification
+
+Checked against the [reference implementation](https://github.com/hj-n/steadiness-cohesiveness)
+by the paper's authors. Because both are stochastic the comparison is distributional:
+sickle's value must fall within the reference's own spread across seeds, and the
+ordering across the five fixtures must match exactly. It does.
+
+## References
+
+<References category="Cluster reliability" />

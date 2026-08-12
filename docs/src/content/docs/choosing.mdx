@@ -1,0 +1,132 @@
+---
+title: Choosing a measure
+description: Which quality measure answers your question — a decision path, and the full capability matrix.
+---
+
+import CapabilityMatrix from "../../components/CapabilityMatrix.svelte";
+import { Aside } from "@astrojs/starlight/components";
+
+Choosing is the hard part. Calling is one line.
+
+There is no "overall quality" of a projection, and any library that offers one is
+averaging over questions you did not ask. Start from what you are going to claim
+about the picture.
+
+## Start from the claim you want to make
+
+**"These points are close together, so they're similar."**
+You are claiming the drawn neighbourhoods are real. Use
+[`trustworthiness`](/SickleJS/families/neighbourhood/) — it penalises exactly the
+error that would make this claim false, points drawn together that were not.
+
+**"There's no group here, so there wasn't one."**
+The mirror claim, and a different measure: [`continuity`](/SickleJS/families/neighbourhood/)
+penalises structure the projection hides rather than invents.
+
+**"This gap is twice as big as that one."**
+You are reading distances, not neighbourhoods. Use
+[`stress`](/SickleJS/families/distance/) or, if you only mean the *ordering* of the
+gaps, [`spearmanRho`](/SickleJS/families/distance/) — the difference matters more
+than it sounds, and there is [a case](/SickleJS/disagreements/) where they disagree
+completely.
+
+**"This cluster is denser than that one."**
+Neighbourhood measures will not catch a projection that flattens the contrast.
+Use [`densityPreservation`](/SickleJS/families/structure/).
+
+**"These classes are separable."**
+Careful: most separability measures see only the projection, so a layout that
+invents clean groups scores well on all of them. Use them, but read
+[the case where they all agree and are all wrong](/SickleJS/disagreements/).
+[`gabrielClassificationError`](/SickleJS/families/separability/) is the only one here
+that also looks at the data.
+
+**"This is one connected structure / this loop is real."**
+Topology. [`topologicalH0`](/SickleJS/families/topology/) for merge structure,
+[`topologicalH1`](/SickleJS/families/topology/) for loops — the only measure here that
+notices a circle has been cut open.
+
+**"I want one number to compare twenty projections."**
+[`aucLogRnx`](/SickleJS/families/neighbourhood/). It integrates R_NX over every
+neighbourhood size on a log scale, so it does not depend on a `k` you chose
+arbitrarily. It is still only the rank-based view.
+
+<Aside type="caution" title="One number is never enough">
+Each of the first five rows of [the disagreement gallery](/SickleJS/disagreements/) is a
+case where a measure scores above 0.9 while the projection is badly wrong in a way
+another measure catches immediately. The last row is the mirror image: a projection
+that is fine for the question being asked, scored badly by a measure asking a
+different one. Pick two or three from different families.
+</Aside>
+
+## How many do you need?
+
+Two, usually three, from *different* families — they are cheap once the pass has
+run, and they fail in different directions:
+
+1. One rank-based: `trustworthiness` **and** `continuity`, or `aucLogRnx` alone.
+2. One distance-based: `scaleNormalizedStress`, or `spearmanRho` if only ordering
+   matters.
+3. One that matches your specific claim: density, topology, or separability.
+
+## What you have determines what you can use
+
+| you have | you can use |
+| ---- | ---- |
+| the projection only | scagnostics — and nothing else here, because with no original data there is nothing to be faithful *to* |
+| the data and the projection | everything except the label measures |
+| data, projection and class labels | everything |
+
+Nine of the ten label measures never look at the data. That is not a flaw — they
+answer "does this picture look separable", which is a real question — but it is not
+the same question as "is this picture honest", and they are routinely used as though
+it were.
+
+### Running them on the data instead
+
+There is a way to get the second question out of them: compute the same measure on
+the *data* with the same labels, and compare. Every separability measure except
+`gabrielClassificationError` takes points of any dimension, so nothing stops you
+pointing one at the high-dimensional side:
+
+```js
+import { clusters, silhouette } from "@saehrimnir/sickle";
+
+const inData = silhouette(hd, clusters(hd, labels)).value;
+const drawn  = silhouette(ld, clusters(ld, labels)).value;
+```
+
+On the [false separation case](/SickleJS/disagreements/), where the labels are noise in
+the data and the layout draws them 5 units apart, that comparison is decisive — the
+data-side numbers sit exactly at chance while the drawn ones are perfect:
+
+| measure | | on the data | on the drawing |
+| ---- | ---- | ---- | ---- |
+| `silhouette` | <i class="dir">▲</i> | 0.000 | 0.902 |
+| `distanceConsistency` | <i class="dir">▲</i> | 0.507 | 1.000 |
+| `neighborhoodHit` | <i class="dir">▲</i> | 0.488 | 1.000 |
+| `classificationError` | <i class="dir">▼</i> | 0.479 | 0.000 |
+
+Two things to be careful about. **A gap is normal.** On an honest PCA projection of
+well-separated blobs the same comparison gives silhouette 0.755 in 8-D against 0.884
+in 2-D — projecting away noise dimensions genuinely tightens clusters, and distances
+concentrate in high dimensions, so the drawn figure starts with an advantage. It is
+the *size* of the gap that carries information, not its sign.
+
+**Only the bounded measures survive the trip.** `calinskiHarabasz`, `dunnIndex`,
+`averageBetweenWithin` and `hypothesisMargin` have no upper limit and their scale
+depends on the dimensionality and spread of whatever space they were computed in —
+Calinski–Harabasz reads 1 144 in the data and 4 687 in the drawing for the *good*
+projection above. Differences between spaces are not interpretable for those four.
+Stick to the four in the table, which are bounded and have a known chance level.
+
+This is a useful check, not a replacement for
+[`gabrielClassificationError`](/SickleJS/families/separability/). It compares two
+summaries and so catches wholesale invented separation; it is much weaker on a few
+individual points put in the wrong place, where the summaries barely move.
+
+## The full matrix
+
+Generated from the library's own TSDoc, so it cannot drift from the code.
+
+<CapabilityMatrix client:visible />

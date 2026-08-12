@@ -1,0 +1,157 @@
+---
+title: Class separability
+description: Silhouette, Calinski–Harabasz, Davies–Bouldin, Dunn, DSC, ABW, hypothesis margin, neighbourhood hit, classification error and GCE.
+sidebar:
+    order: 4
+---
+
+import MeasureExplorer from "../../../components/MeasureExplorer.svelte";
+import Disagreement from "../../../components/Disagreement.svelte";
+import { Aside } from "@astrojs/starlight/components";
+import References from "../../../components/References.svelte";
+
+**The question:** do the labelled classes come apart in this picture?
+
+Ten measures, all needing labels. Nine of them never look at the original data — and
+that is the single most important thing to know about this family.
+
+<Aside type="danger" title="Nine of these cannot tell you the picture is honest">
+`silhouette`, `calinskiHarabasz`, `daviesBouldin`, `dunnIndex`, `distanceConsistency`,
+`averageBetweenWithin`, `hypothesisMargin`, `neighborhoodHit` and
+`classificationError` see the projection and the labels, and nothing else. A layout
+that invents clean separation scores *better* on every one of them than an honest
+layout does. They answer "does this look separable", which is a real question, but it
+is routinely mistaken for "is this separation real".
+</Aside>
+
+## The measures
+
+<i class="dir">▲</i> higher is better · <i class="dir">▼</i> lower is better · <i class="dir open">△</i><i class="dir open">▽</i> hollow: unbounded, so the number is comparable only between projections of the same data.
+
+| measure | | idea | range |
+| ---- | ---- | ---- | ---- |
+| `silhouette` | <i class="dir">▲</i> | own-cluster distance vs nearest-other-cluster, per point | $[-1, 1]$ |
+| `calinskiHarabasz` | <i class="dir open">△</i> | between-cluster variance over within-cluster variance | $[0, \infty)$ |
+| `daviesBouldin` | <i class="dir open">▽</i> | worst-case cluster-pair overlap | $[0, \infty)$ |
+| `dunnIndex` | <i class="dir open">△</i> | smallest centroid-to-centroid gap over largest cluster diameter | $[0, \infty)$ |
+| `distanceConsistency` | <i class="dir">▲</i> | fraction of points nearest their own class centroid | $[0, 1]$ |
+| `averageBetweenWithin` | <i class="dir open">△</i> | mean between-class distance over mean within-class | $[0, \infty)$ |
+| `hypothesisMargin` | <i class="dir open">△</i> | distance to nearest miss minus nearest hit | $(-\infty, \infty)$ |
+| `neighborhoodHit` | <i class="dir">▲</i> | fraction of a point's k neighbours sharing its label | $[0, 1]$ |
+| `classificationError` | <i class="dir">▼</i> | k-NN misclassification rate in the projection (k = 20; ties count as correct) | $[0, 1]$ |
+| `gabrielClassificationError` | <i class="dir open">▽</i> | class disagreements between drawn-adjacent points, weighted most where they are **truly closest** | $[0, \infty)$ |
+
+## Using them
+
+`clusters()` does the per-class bookkeeping once so several measures can share it:
+
+```js
+import {
+    clusters, knnIndices,
+    silhouette, calinskiHarabasz, daviesBouldin, dunnIndex,
+    distanceConsistency, averageBetweenWithin, hypothesisMargin,
+    neighborhoodHit, classificationError, gabrielClassificationError,
+} from "@saehrimnir/sickle";
+
+const cl = clusters(ld, labels);
+
+// cluster-shape measures, all from the same bookkeeping
+silhouette(ld, cl).value;             // 0.8838
+calinskiHarabasz(ld, cl).value;       // 4686.85
+daviesBouldin(ld, cl).value;          // 0.1603  — lower is better
+dunnIndex(ld, cl).value;              // 2.6938
+distanceConsistency(ld, cl).value;    // 1.0
+averageBetweenWithin(ld, cl).value;   // 10.7873
+hypothesisMargin(ld, cl).value;       // 12.4940
+
+// the k-NN pair share one neighbour computation
+const knn = knnIndices(ld, 20);
+neighborhoodHit(ld, labels, 20, knn).value;        // 1.0
+classificationError(ld, labels, 20, knn).value;    // 0.0 — lower is better
+
+// the only one that also sees the data
+gabrielClassificationError(hd, ld, labels).value;  // 0.2147 — lower is better
+```
+
+<MeasureExplorer client:visible category="Class separability" dataset="blobs_pca" measure="silhouette" />
+
+## The failure the family shares
+
+Two classes that sit on top of each other in the data, drawn as two tidy groups:
+
+<Disagreement client:visible id="false-separation" />
+
+Silhouette 0.902, distance consistency 1.0, neighbourhood hit 1.0 — a unanimous
+verdict that the classes are cleanly separable. Trustworthiness reads 0.601, because
+the neighbourhoods being drawn are not real ones.
+
+Note that GCE is *also* fooled here, at 0.064, and the reason is worth understanding:
+GCE only ever charges for pairs the *layout* drew as neighbours — Gabriel-graph edges
+in the projection. This layout draws the classes far apart, so almost no edge crosses a
+class boundary and there is almost nothing to charge for, however entangled the two
+classes are in the data. GCE catches a different failure.
+
+## What GCE does catch
+
+A layout that is broadly right, with a handful of points teleported into the wrong
+class:
+
+<Disagreement client:visible id="stray-points" />
+
+Six strays in 160 points. Silhouette drops from 0.912 to 0.858, distance consistency
+to 0.981, neighbourhood hit to 0.968 — all still comfortably "good". GCE goes from
+0.036 to 0.326, a factor of nine, because it is the only measure here that looks at
+who a point was drawn next to and checks the labels of exactly those points.
+
+The weighting is worth stating precisely, because it is easy to get backwards. Each
+point's Gabriel neighbours are sorted **ascending by high-dimensional distance**, and
+the weights decay harmonically with that rank — so the neighbour a point is *truly
+closest* to carries the largest weight, and the truly farthest the smallest. A
+cross-class edge to a genuinely near neighbour is the expensive one, and a point with
+few neighbours weighs each of them more heavily.
+
+<Aside type="caution" title="GCE is not normalised">
+It grows with neighbourhood size and has no upper bound, so compare it only between
+projections of the same dataset. `calinskiHarabasz`, `dunnIndex`,
+`averageBetweenWithin` and `hypothesisMargin` carry the same warning.
+</Aside>
+
+## Per-point values
+
+Five of the ten decompose per point with `localKind: "mean"`: `silhouette`,
+`distanceConsistency`, `hypothesisMargin`, `neighborhoodHit` and
+`classificationError`. GCE is the `partial-mean` case: points with a single Gabriel
+neighbour have no defined weighting, so the measure excludes them — `counted` is how
+many points made it into the average, `excluded` is an `Int32Array` of the indices that
+did not. Those are drawn hollow, never as zero — a fabricated 0 would read as
+"perfect".
+
+The remaining four — `calinskiHarabasz`, `daviesBouldin`, `dunnIndex` and
+`averageBetweenWithin` — are ratios of aggregates and have `localKind: "none"`.
+
+## Cost
+
+Most are $O(N^2 D)$. `calinskiHarabasz` is $O(N D)$ and `daviesBouldin` $O(N D + k^2)$
+because both work from centroids. GCE builds a Gabriel graph via Delaunay
+triangulation, $O(N \log N)$; the weighting then walks only the graph's edges, and a
+Gabriel graph is planar, so that pass is $O(N D + \sum_j k_j \log k_j)$ — linear in
+edges, not in pairs. The genuinely quadratic path is the `exact` Gabriel construction,
+used as a fallback when the projection contains coincident points.
+
+## Verification
+
+`silhouette`, `calinskiHarabasz` and `daviesBouldin` are checked against
+scikit-learn to 12 significant digits. `distanceConsistency`, `averageBetweenWithin`,
+`hypothesisMargin` and `neighborhoodHit` are checked against zadu.
+
+`gabrielClassificationError` is checked against the R package
+[DRquality](https://CRAN.R-project.org/package=DRquality), matching exactly on four of
+five fixtures — see [Verification](/SickleJS/verification/#gce-and-drqualitys-leaves) for the fifth, which is
+a bug in the reference rather than a disagreement.
+
+`dunnIndex` and `classificationError` are **behaviour-tested only**: no reference
+implementation was available for the exact variants used here.
+
+## References
+
+<References category="Class separability" />

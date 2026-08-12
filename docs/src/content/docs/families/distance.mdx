@@ -1,0 +1,149 @@
+---
+title: Distance
+description: Stress, scale-normalised stress, non-metric stress, Pearson and Spearman correlation of distances.
+sidebar:
+    order: 2
+---
+
+import MeasureExplorer from "../../../components/MeasureExplorer.svelte";
+import Disagreement from "../../../components/Disagreement.svelte";
+import { Aside } from "@astrojs/starlight/components";
+import References from "../../../components/References.svelte";
+
+**The question:** if one gap in the plot is twice another, was it twice as big in the
+data?
+
+This is a stricter claim than the neighbourhood family makes, and a different one.
+Neighbourhood measures only care about *who* is near whom; these care about *how far*.
+
+## The measures
+
+<i class="dir">▲</i> higher is better · <i class="dir">▼</i> lower is better · <i class="dir open">△</i><i class="dir open">▽</i> hollow: unbounded, so the number is comparable only between projections of the same data.
+
+| measure | | what it compares | range |
+| ---- | ---- | ---- | ---- |
+| `stress` | <i class="dir open">▽</i> | raw distances, as they are | $[0, \infty)$ |
+| `scaleNormalizedStress` | <i class="dir">▼</i> | distances after the optimal global rescaling | $[0, 1]$ |
+| `nonMetricStress` | <i class="dir">▼</i> | distances after the optimal *monotone* transform | $[0, 1]$ |
+| `pearsonR` | <i class="dir">▲</i> | linear correlation of the two distance sets | $[-1, 1]$ |
+| `spearmanRho` | <i class="dir">▲</i> | rank correlation — ordering only | $[-1, 1]$ |
+| `residualVariance` | <i class="dir">▼</i> | $1 - r^2$; the variance the linear fit leaves | $[0, 1]$ |
+
+They form a ladder of how much you are willing to forgive:
+
+- `stress` forgives nothing. A projection that is perfect but drawn at half scale
+  scores badly.
+- `scaleNormalizedStress` forgives a global rescaling: it minimises
+  $\sum (d_{ij} - \alpha \hat{d}_{ij})^2$ over $\alpha$, so `optimalScale` is the factor
+  the *projected* distances are multiplied by, not divided by. Usually what you want,
+  and what most papers mean when they say "stress".
+- `nonMetricStress` forgives *any* monotone transform — it only asks that the
+  ordering survive. Equivalent in spirit to `spearmanRho`, computed as a stress.
+
+Only raw `stress` is unbounded above. The other two each minimise their numerator
+against a fit that includes the trivial one — $\alpha = 0$ for the rescaling, the
+constant curve for the monotone fit — which is exactly the denominator, so neither
+can exceed 1.
+
+The shared distance pass, and `spearmanRho`, sum over the **full $N \times N$ matrix,
+zero diagonal included** — zadu's convention, so the numbers line up with it. For the
+stresses that changes nothing, since a diagonal term contributes zero to numerator and
+denominator alike. For `pearsonR`, `residualVariance` and `spearmanRho` it changes the
+answer: all three take means over the entries and the $N$ zeros shift them. Those
+three will not agree with a condensed (upper-triangle) implementation on the same
+data. Compare like with like. (`nonMetricStress` is the exception: it enumerates the
+$i < j$ pairs only.)
+
+## Using them
+
+All but `spearmanRho` and `nonMetricStress` come free with the distance accumulators,
+which `analyze` collects by default:
+
+```js
+const a = analyze(X, Y);
+
+stress(a.moments).value;                 // 0.0807
+scaleNormalizedStress(a.moments).value;  // 0.0737
+pearsonR(a.moments).value;               // 0.9967
+residualVariance(a.moments).value;       // 0.0066 — the 1 − r² of the same fit
+optimalScale(a.moments);                 // the factor the projection is multiplied by
+```
+
+`spearmanRho` and `nonMetricStress` are separate calls, because both must
+materialise every pair to sort them:
+
+```js
+spearmanRho(hd, ld).value;      // 0.9880
+nonMetricStress(hd, ld).value;  // 0.0311
+```
+
+<MeasureExplorer client:visible category="Distance" dataset="blobs_pca" measure="stress" />
+
+<Aside type="danger" title="`stress` is a share, not a score">
+Its per-point array has `localKind: "share"` — the entries sum to 1, and each one is
+that point's *fraction of the total error*. A large value means a large contribution,
+not a bad point. Averaging it does not give the stress.
+</Aside>
+
+## Where they disagree with each other
+
+When a projection keeps every ordering but gets the *size* of the gaps wrong — which
+is what t-SNE and UMAP do by construction — the metric measures condemn it and the
+rank-based ones approve:
+
+<Disagreement client:visible id="gaps-compressed" />
+
+Three rigid clusters pushed together until the gaps between them are a quarter of
+their true size. `spearmanRho` reads 0.9993 and `nonMetricStress` 0.008, because the
+clusters are still further from each other than their own points are. But
+`scaleNormalizedStress` reads 0.141 — seventeen times the non-metric figure — and raw
+`stress` 0.747.
+
+Nothing is wrong with any of them: they answer different questions, and only one of
+those questions is usually the one you meant.
+
+<Aside type="tip" title="A useful ratio">
+`scaleNormalizedStress` much larger than `nonMetricStress` means the projection has
+the *shape* right and the *scale* wrong. The two agreeing means the ordering is broken
+too, and no monotone rescaling would rescue it.
+</Aside>
+
+<Aside type="note" title="Which to quote">
+If you are going to read absolute distances off the plot, `scaleNormalizedStress`.
+If you are only going to read the ordering — "these two are closer than those two" —
+`spearmanRho` or `nonMetricStress`, and say so.
+</Aside>
+
+## Cost
+
+`stress`, `scaleNormalizedStress`, `pearsonR` and `residualVariance` are $O(1)$
+read-outs of the pass.
+
+`spearmanRho` and `nonMetricStress` are $O(N^2 \log N)$ *and* materialise every pair.
+Both take a `maxPairs` guard, default `60e6` — but they count different things, so the
+same number means different sizes.
+
+- `spearmanRho` builds the full $N \times N$ matrix, diagonal included, and counts
+  $N^2$ against `maxPairs`. It refuses past $N \approx 7\,745$, so at
+  $N = 10\,000$ it throws.
+- `nonMetricStress` enumerates the $N(N-1)/2$ pairs with $i < j$ and counts those. At
+  $N = 10\,000$ that is $5.0 \times 10^7$ — **under** the default, so it does not
+  refuse, it runs. It then holds six arrays over those pairs (both distance sets, the
+  sort order, the two sorted copies and the disparities), about 44 bytes per pair in
+  total, and tries to allocate over 2 GB. Lower `maxPairs` if that is not what you
+  want.
+
+## Verification
+
+Every measure here is checked against a reference fixture, at these tolerances:
+`stress` against zadu to 1e-12, `scaleNormalizedStress` to 1e-10 (and `optimalScale`
+against zadu's own $\alpha$ to 1e-12), `pearsonR` to 1e-11, `residualVariance` to
+1e-10, `spearmanRho` against `scipy.stats.spearmanr` — tie-correction included — to
+1e-10, and `nonMetricStress` against zadu's `non_metric_stress` end to end to 1e-10.
+The isotonic step is pool adjacent violators, matching
+`sklearn.isotonic.IsotonicRegression`'s handling of tied inputs, but it is the
+end-to-end value that is compared, not the fit in isolation.
+
+## References
+
+<References category="Distance" />

@@ -1,0 +1,129 @@
+---
+title: Where measures disagree
+description: Six cases where two measures contradict each other, and one number would have misled.
+---
+
+import Disagreement from "../../components/Disagreement.svelte";
+import { Aside } from "@astrojs/starlight/components";
+
+The most instructive thing this library can show is where two measures contradict
+each other, because that is exactly where a single number would have misled.
+
+In the first five a measure scores above 0.9 while the projection is badly wrong; the
+sixth is the mirror image, where a measure condemns a projection that is fine for the
+question you were asking. None of them is a bug: each measure answers its own question
+correctly, and the disagreement is the useful signal.
+
+Every case is built by `test/cases.mjs`, which
+[`test/disagreements.test.ts`](https://github.com/saehm/SickleJS/blob/main/test/disagreements.test.ts)
+asserts on and this page renders — one source, so the plots and the tests are looking
+at the same layouts. The exact figures quoted below are computed by the site's
+precompute step; the tests assert the bounds that make each case a disagreement (that
+trustworthiness stays above 0.95 here, that GCE multiplies several-fold there) rather
+than pinning every digit.
+
+## A circle unrolled into an arc
+
+<Disagreement client:visible id="loop-unrolled" />
+
+Cutting a loop open preserves every local neighbourhood — each point keeps the same
+handful of near neighbours — so trustworthiness reads **0.995** and H0 barely moves.
+The data has one loop and the projection has none, which only
+[`topologicalH1`](/SickleJS/families/topology/) reports.
+
+This is not a contrived failure. Any method that flattens a manifold has to tear it
+somewhere, and the tear is invisible to every local measure by construction.
+
+## A tight cluster inflated to match a diffuse one
+
+<Disagreement client:visible id="density-flattened" />
+
+Two clusters of very different density, drawn at the same width. Every neighbourhood
+survives, so trustworthiness reads **0.934** — and the statement "this cluster is
+denser" has become unreadable from the plot.
+[`densityPreservation`](/SickleJS/families/structure/) reads 0.374.
+
+t-SNE and UMAP do this by construction, which is why it is worth checking rather than
+assuming.
+
+## One real group drawn as two
+
+<Disagreement client:visible id="group-split" />
+
+Sliding one group apart into two halves keeps every point's neighbours intact.
+Trustworthiness **0.997**, continuity 0.971. Cohesiveness reads 0.314, because the
+unit it works on is the cluster, not the point.
+
+Note it is *cohesiveness* that falls, not steadiness — the projection has not merged
+things that were apart, it has split something that was together. See
+[Cluster reliability](/SickleJS/families/snc/).
+
+## Classes drawn cleanly apart that overlap in the data
+
+<Disagreement client:visible id="false-separation" />
+
+Silhouette **0.902**, distance consistency **1.0**, neighbourhood hit **1.0**. A
+unanimous verdict from the separability family that these classes come apart cleanly —
+and they do, *in the picture*. Trustworthiness reads 0.601, because the neighbourhoods
+being drawn are not real.
+
+<Aside type="note" title="GCE is fooled here too, and that is not a fault">
+Gabriel classification error reads 0.064. It builds its adjacency from the *drawing*
+and charges for every Gabriel edge that joins two classes — so a layout this cleanly
+separated barely has any such edge to charge for. The measure is not being fooled by
+its weighting; it is being handed a picture in which the classes simply do not touch.
+GCE catches the next case instead, where the strays are drawn *inside* the wrong
+class and the cross-class edges appear.
+</Aside>
+
+## A few points drawn inside the wrong class
+
+<Disagreement client:visible id="stray-points" />
+
+Six points in 160 teleported into the other class. Silhouette drops from 0.912 to
+**0.858**, distance consistency to 0.981, neighbourhood hit to 0.968 — all still
+comfortably in "good" territory, because six points out of 160 barely move an average.
+
+[`gabrielClassificationError`](/SickleJS/families/separability/) goes from 0.036 to
+**0.326**, a factor of nine. A stray dropped inside the wrong class becomes Gabriel-
+adjacent to that class on nearly every side, so almost all of its edges are cross-
+class ones — and each is charged. It is also the only measure in that family that
+looks at the original data as well as the drawing: it orders each point's Gabriel
+neighbours by their *true* distance and puts the heaviest weight on the nearest one,
+so an edge to a point the stray really should have been beside is the most expensive
+kind there is.
+
+## Cluster gaps four times too small
+
+<Disagreement client:visible id="gaps-compressed" />
+
+Three clusters, each kept rigid, pushed together until the gaps between them are a
+quarter of their true size. Nearly every distance ordering survives — the clusters are
+still further from each other than their own points are — so `spearmanRho` reads **0.9993**
+and `nonMetricStress` **0.008**. But `scaleNormalizedStress` reads **0.141**,
+seventeen times the non-metric figure, and raw `stress` 0.747.
+
+Both are right, which is why this row is labelled differently from the others. If you
+were going to say "these two points are closer than those two", the projection answers
+perfectly and stress is condemning it for no reason you care about. If you were going
+to say "this gap is twice that one", stress is telling you something true and important
+that the rank measures cannot see.
+
+The gap between `scaleNormalizedStress` and `nonMetricStress` is the diagnostic: when
+one is much larger than the other, the projection has the shape right and the scale
+wrong.
+
+## What to take from this
+
+The pattern across the first five: **pick measures from different families**. They are
+cheap once the pass has run — most are O(1) read-outs — and each of these failures is
+invisible to one family and obvious to another.
+
+The sixth adds the other half of the lesson. A measure disagreeing with another does
+not mean one of them is broken; it usually means they were asked different questions,
+and the one you should believe is the one whose question matches the claim you are
+about to make about the picture.
+
+A reasonable default: `trustworthiness` and `continuity`, plus
+`scaleNormalizedStress`, plus whichever one matches the specific claim you intend to
+make about the picture. See [Choosing a measure](/SickleJS/choosing/).

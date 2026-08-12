@@ -1,0 +1,112 @@
+---
+title: Structure
+description: Density preservation and triplet accuracy — two distortions the neighbourhood family cannot see.
+sidebar:
+    order: 5
+---
+
+import MeasureExplorer from "../../../components/MeasureExplorer.svelte";
+import Disagreement from "../../../components/Disagreement.svelte";
+import { Aside } from "@astrojs/starlight/components";
+import References from "../../../components/References.svelte";
+
+**The question:** two things a projection routinely gets wrong that no rank-based
+measure notices.
+
+## Density preservation
+
+t-SNE and UMAP both inflate sparse regions and compress dense ones by construction.
+Every local neighbourhood survives — so trustworthiness is delighted — while the
+statement "this cluster is denser than that one" becomes unreadable from the plot.
+
+`densityPreservation` correlates each point's local radius in the data — its mean
+distance to its `densityK` nearest neighbours — with its local radius in the
+projection. The correlation is taken over the **logs** of those radii, so it reads
+density ratios rather than absolute sizes. A point whose radius is zero in either
+space — it coincides with all `densityK` of its nearest neighbours — has no log, and is
+dropped from the correlation rather than clamped to some floor. Both radius arrays
+still report it.
+
+```js
+const a = analyze(hd, ld, { densityK: 20 });
+densityPreservation(a.structure).value;              // 0.4271
+densityPreservation(a.structure, "spearman").value;  // rank version
+```
+
+The result also carries `radiusHigh` and `radiusLow`, the per-point radii themselves,
+which are often more informative than the correlation.
+
+<Disagreement client:visible id="density-flattened" />
+
+Two clusters, one tight and one diffuse, drawn at the same width. Trustworthiness
+0.934, continuity 0.939 — the neighbourhoods are all intact. Density preservation
+0.374: the contrast is gone.
+
+<Aside type="caution" title="`densityK` must be requested">
+`densityPreservation` throws if the pass was not given `densityK`, naming the option.
+The radii are not free, so they are not collected by default.
+</Aside>
+
+## Triplet accuracy
+
+Take three points. In the data, `j` is closer to `i` than `k` is. Is that still true
+in the projection? Triplet accuracy is the fraction of triplets where it is.
+
+This is the most direct formalisation of "can I read relative distances off this
+plot", and unlike stress it is invariant to any monotone rescaling.
+
+```js
+const a = analyze(hd, ld, { triplets: true });
+tripletAccuracy(a.structure).value;   // 0.9560
+```
+
+<Aside type="note" title="Exhaustive, not sampled">
+The usual implementation samples a few thousand random triplets, which makes the
+number depend on a seed and wobble between runs. There are $N(N-1)(N-2)/2$ triplets —
+$5 \times 10^{11}$ at $N = 10\,000$ — so sampling looks unavoidable.
+
+It is not. Per anchor point, the count of discordant pairs is exactly an inversion
+count between two orderings, computable in $O(N \log N)$ with a Fenwick tree. That
+makes the *exhaustive* answer $O(N^2 \log N)$ — one extra Fenwick sweep per row on top
+of the sort the pass was doing anyway — so sickle computes it exactly. Cheap, but not
+free. The number is deterministic and has no seed.
+
+The test suite checks that the sampling estimator converges to it, which is the
+check that matters.
+</Aside>
+
+## Reading these
+
+**Density preservation** is a correlation in $[-1, 1]$. Above about 0.8 means the
+density structure is broadly kept; near 0 means the plot says nothing about density;
+negative means it is actively inverted. It has `localKind: "none"` — a correlation
+does not decompose per point — but the two radius arrays do the same job better.
+
+**Triplet accuracy** is in $[0, 1]$ with **0.5 as chance**, because a triplet either
+survives or does not and a coin gets half of them right. 0.75 is not "quite good", it
+is halfway to random. It has `localKind: "mean"`, per anchor point.
+
+<MeasureExplorer client:visible category="Structure" dataset="blobs_pca" measure="tripletAccuracy" />
+
+## Cost
+
+Both read out of moments the pass has already collected. `tripletAccuracy` is then
+$O(N)$ over the per-row inversion counts; `densityPreservation` is $O(N)$ for
+`"pearson"`, or $O(N \log N)$ for `"spearman"`, which sorts the radii to rank them.
+The collection itself is folded into the same sweep as everything else: `densityK`
+adds a per-row radius, `triplets: true` adds one Fenwick inversion count per row.
+
+## Verification
+
+Both are **checked against the published definition**; there is no reference fixture
+for either. Density preservation's radii are checked against an independent naive
+computation of the k-nearest-neighbour means, and the correlation itself against the
+invariances it must satisfy: exactly 1 for an identity projection, exactly 1 under a
+uniform rescaling, and a drop on a fixture where neighbourhoods survive but the
+density contrast is flattened. Triplet accuracy is verified against brute force over
+every triplet on small inputs, and against the sampling estimator it replaces on
+larger ones.
+
+## References
+
+<References category="Structure" />

@@ -1,0 +1,139 @@
+---
+title: Scagnostics
+description: Nine shape descriptors for a scatterplot — what the picture looks like, not whether it is faithful.
+sidebar:
+    order: 8
+---
+
+import ScagnosticsPanel from "../../../components/ScagnosticsPanel.svelte";
+import { Aside } from "@astrojs/starlight/components";
+import References from "../../../components/References.svelte";
+
+**The question:** what does this scatterplot *look* like?
+
+<Aside type="caution" title="These are not quality measures">
+Scagnostics never see the high-dimensional data. They describe the picture — clumpy,
+stringy, striated — and cannot tell you whether the picture is faithful, because they
+have nothing to compare it to. They are on their own page, and off
+[the decision path](/SickleJS/choosing/), for exactly that reason.
+
+What they are good for: searching a large set of plots for interesting ones, comparing
+projections of the *same* data by shape, and describing a layout in words.
+</Aside>
+
+## The nine
+
+| descriptor | high when |
+| ---- | ---- |
+| `outlying` | a lot of the data sits away from the rest |
+| `skewed` | the spanning tree's edge lengths are very uneven |
+| `clumpy` | the points fall into distinct lumps |
+| `sparse` | the points are spread thinly over the plot |
+| `striated` | the points lie along parallel strands |
+| `convex` | the outline is close to its own convex hull |
+| `skinny` | the outline is thin — a lot of perimeter for its area |
+| `stringy` | the shape is a thread rather than a blob |
+| `monotonic` | the relationship is close to a monotone curve |
+
+Eight of the nine are ratios in $[0, 1]$. `sparse` is the odd one: it is the raw
+90th-percentile spanning-tree edge length after each axis is scaled onto $[0, 1]$, so
+nothing bounds it by 1 — its ceiling is the diagonal of the unit square, $\sqrt{2}$.
+In practice it stays small (0.02–0.07 across the fixtures). None has a "better"
+direction — a high `stringy` is not good or bad, it is a description.
+
+## Using them
+
+```js
+import {
+    scagnostics, scagnostic, scagnosticsFor, SCAGNOSTIC_NAMES,
+} from "@saehrimnir/sickle";
+
+scagnostics(ld);                    // all nine
+scagnostic(ld, "clumpy").value;     // just one
+scagnosticsFor(hd, ld);             // all nine, with a shape check against hd
+```
+
+`scagnosticsFor` computes exactly what `scagnostics` does — it only adds an assertion
+that the projection has the same point count as the data it claims to come from, so a
+mismatched pair fails loudly instead of quietly describing the wrong plot.
+
+All three take an optional `ScagnosticsOptions`: `startBinGridSize` (default 40) sets
+the resolution the binning search starts from, `minBins` (50) and `maxBins` (500) the
+occupied-cell window it adapts towards, `isNormalized` skips the per-axis rescale for
+data already on $[0, 1]$, `isBinned` skips binning and treats the input points as the
+sites, and `outlyingUpperBound` overrides the long-edge threshold used for outlier
+removal and the alpha hull.
+
+The projection must be 2-dimensional — this is the one measure in the library with
+that restriction, and it is inherent: the underlying geometry is a planar Delaunay
+triangulation.
+
+<ScagnosticsPanel client:visible dataset="blobs_pca" />
+
+Compare `blobs_pca` with `blobs_random` in the picker above. The PCA projection is
+strongly `clumpy` at 0.9219; the random projection of the same data falls to 0.6547,
+because much of the structure it was clumpy about is smeared away. Lower, not absent —
+random projections of well-separated blobs still leave lumps behind.
+
+## How they are computed
+
+Everything derives from three graphs on a binned version of the data: the minimum
+spanning tree, the convex hull, and the alpha hull. Binning first is what makes the
+whole thing $O(N \log N)$ rather than quadratic in the raw point count. Binning is
+skipped when there is nothing to gain — fewer than `minBins` distinct points — or when
+you pass `isBinned`, in which case the points you hand in *are* the sites.
+
+Only the nine numbers come out: the intermediate products — binned sites, spanning
+tree, hulls — are internal, and the public surface is `scagnostics`, `scagnostic`,
+`scagnosticsFor` and `SCAGNOSTIC_NAMES`.
+
+## Provenance and differences
+
+This is an adaptation of
+[Scagnostics2018](https://github.com/iDataVisualizationLab/Scagnostics2018) by Tommy
+Dang and Vung Pham, reimplemented rather than vendored: the `underscore`,
+`simple-statistics`, `d3-polygon` and `alpha-shape` dependencies are gone — only
+`d3-delaunay` remains, plus DruidJS, whose Kruskal implementation still builds the MST
+— and the whole thing got the same performance treatment as the rest of the library.
+With the accidental quadratics removed it runs 24× faster at N = 2 000, 48× at
+N = 20 000 and 62× at N = 100 000.
+
+Three deliberate differences from the original:
+
+- **`monotonic` is computed correctly.** The original takes the `Σd²` shortcut for
+  Spearman's rho and then applies a tie correction, a combination that can return
+  values outside $[0, 1]$ — 5.38 on one 300-point fixture. Here the correlation is
+  Pearson's r on average ranks, which is the definition and holds with ties, so
+  out-of-range values cannot arise. The only guard left is a non-finite check.
+- **The quantile definition is pinned.** `simple-statistics` changed its `quantile`
+  interpolation between v6 and v7, silently shifting both `skewed` and `sparse`. The
+  v6 definition is written out explicitly here so it cannot drift again.
+- **The MST is rebuilt after outlier removal** whenever an outlying vertex had degree
+  ≥ 2 and at least three sites survive, which the original omitted. Skipping it causes
+  measurable drift.
+
+## Cost
+
+$O(N \log N)$ after binning, which is what makes them usable on plots the other
+measures would choke on.
+
+## Verification
+
+Checked against a committed snapshot of the upstream output on five fixtures. The seven
+MST-derived measures — `outlying`, `skewed`, `clumpy`, `sparse`, `striated`, `stringy`,
+`monotonic` — are asserted **bit-identical** on every fixture.
+
+`convex` and `skinny` are the exception, and it is not a case of the reference being
+wrong. They are the only two read off the alpha hull, and upstream triangulates twice
+with two different libraries: `d3-delaunay` for the MST, `alpha-shape` for the hulls.
+The two disagree on degenerate configurations — cocircular points, exact duplicates —
+and pick different boundary edges. Here one triangulator does both, so the pipeline is
+at least self-consistent, but on genuinely ambiguous input there is no fact of the
+matter about which boundary is right. The tests therefore allow a bounded deviation,
+0.01 for `convex` and 0.03 for `skinny`. Observed: at most 8.5e-5 on the ordinary
+fixtures, rising to 5.6e-3 (`convex`) and 1.9e-2 (`skinny`) on `duplicates`, which
+contains 30 exact duplicate points and is maximally degenerate by design.
+
+## References
+
+<References category="Scagnostics" />

@@ -1,0 +1,142 @@
+/*
+ * Purple carries the structure — links, navigation, headings. The greys are
+ * tinted the same way: Starlight's defaults lean blue, and a violet accent on a
+ * blue-grey reads as two different colours rather than one family.
+ *
+ * The loud pink is reserved for whatever is currently selected or currently
+ * extreme. Keeping it rare is what lets it mean something.
+ */
+:root {
+    --sl-color-accent-low: #2a1c3f;
+    --sl-color-accent: #9a7bd0;
+    --sl-color-accent-high: #ddd0f2;
+
+    --sl-color-white: #faf8fd;
+    --sl-color-gray-1: #ece7f4;
+    --sl-color-gray-2: #cdc4dc;
+    --sl-color-gray-3: #9f96b0;
+    --sl-color-gray-4: #675e79;
+    --sl-color-gray-5: #443c55;
+    --sl-color-gray-6: #2c2539;
+    --sl-color-gray-7: #1f1a2a;
+    --sl-color-black: #14101c;
+
+    /* Cool enough to belong beside the violet, distinct enough to signal. */
+    --sl-color-red: #e2576b;
+    --sl-color-green: #5aa87f;
+    --sl-color-orange: #d1873a;
+
+    --demo-accent: #ff45c6;
+    /* The "relative scale" amber, for anything only comparable to itself. */
+    --demo-relative: #f0ad3c;
+}
+
+:root[data-theme="light"] {
+    --sl-color-accent-low: #ebe3f8;
+    --sl-color-accent: #6a3fae;
+    --sl-color-accent-high: #2b1a49;
+
+    --sl-color-white: #191324;
+    --sl-color-gray-1: #271f36;
+    --sl-color-gray-2: #443b56;
+    --sl-color-gray-3: #675d79;
+    --sl-color-gray-4: #8f86a0;
+    --sl-color-gray-5: #c5bdd3;
+    --sl-color-gray-6: #e6e0ef;
+    --sl-color-gray-7: #f3eff9;
+    --sl-color-black: #fdfbff;
+
+    --sl-color-red: #b8283f;
+    --sl-color-green: #327a54;
+    --sl-color-orange: #9a5c12;
+
+    --demo-accent: #b8069b;
+    --demo-relative: #9a6510;
+}
+
+/*
+ * The demos render inside `.sl-markdown-content`, which spaces flow content
+ * with an `* + *` top-margin rule and gives form controls their own sizing.
+ * Both leak into the components: the margin rule pushes each successive control
+ * down by a step, producing a staircase where a toolbar row should be.
+ *
+ * Svelte's scoped styles cannot win this — Starlight's selectors are no less
+ * specific and load afterwards — so the reset lives here, where it can name the
+ * elements it neutralises.
+ */
+.sl-markdown-content
+    .sickle-demo
+    :where(
+        div, p, span, label, select, input, button, svg, figure, figcaption,
+        dl, dt, dd, table, section, details, summary, ul, ol, li,
+        h3, h4, h5, b, i, em, u, strong, small, code, a
+    ) {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.sl-markdown-content .sickle-demo :where(select, input, button) {
+    line-height: 1;
+    vertical-align: middle;
+}
+
+/* The capability and verification matrices are wide and must not push the page sideways. */
+.sl-markdown-content table {
+    display: block;
+    overflow-x: auto;
+}
+
+/*
+ * Display equations scroll inside their own box rather than widening the page.
+ * KaTeX lays out at the formula's natural width, so a long one otherwise makes
+ * the whole article scroll horizontally — every paragraph on the page pays for
+ * one equation. The padding keeps descenders and \lfloor rules off the edge
+ * when the box does scroll.
+ */
+.sl-markdown-content .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.35rem 0.1rem 0.6rem;
+}
+
+/* Inline maths must not stretch the line box it sits in. */
+.sl-markdown-content .katex {
+    font-size: 1.02em;
+}
+
+/* Numbers in tables read better tabular; the range column is mostly maths. */
+.sl-markdown-content td .katex {
+    font-size: 0.95em;
+}
+
+/*
+ * Measure names appear constantly in prose and in table cells. At Starlight's
+ * default inline-code size a table of forty of them turns into noise, so they
+ * are toned down rather than highlighted.
+ */
+.sl-markdown-content :not(pre) > code {
+    font-size: 0.875em;
+    background: color-mix(in srgb, var(--sl-color-accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
+}
+
+/*
+ * Direction marks in hand-written tables.
+ *
+ * The same encoding the Svelte tables use, so a reader learns it once:
+ * the triangle points the way that is better, and it is *hollow* when the
+ * measure is unbounded. Shape carries both facts on its own — colour is
+ * reinforcement, not the only channel, so the tables survive greyscale
+ * printing and colour-blind readers.
+ */
+.sl-markdown-content i.dir {
+    font-style: normal;
+    color: var(--sl-color-accent);
+}
+.sl-markdown-content i.dir.open {
+    color: var(--demo-relative, #f0ad3c);
+}
+/* The marks sit alone in a narrow column; centring beats a ragged left edge. */
+.sl-markdown-content td:has(> i.dir) {
+    text-align: center;
+}

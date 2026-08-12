@@ -1,0 +1,69 @@
+name: docs
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+    workflow_dispatch:
+
+# One deploy at a time; a queued run supersedes an older one rather than racing it.
+concurrency:
+    group: pages
+    cancel-in-progress: false
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: pnpm/action-setup@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: pnpm
+
+            - run: pnpm install --frozen-lockfile
+
+            # The docs import the *built* package through the workspace link, so
+            # the library has to be built before the site — and a library that
+            # does not typecheck should not produce a site that claims it does.
+            - run: pnpm run typecheck
+            - run: pnpm run test
+            - run: pnpm run build
+
+            # Runs `precompute.mjs` first, then astro build (which runs TypeDoc).
+            # A broken link, a missing @category or a measure that throws during
+            # precompute all fail here rather than shipping.
+            - run: pnpm --filter @saehrimnir/sickle-docs build
+
+            # `astro build` renders the pages but cannot see a demo that fails to
+            # hydrate — that is a successful build and a blank box. This loads
+            # every page in a real browser and checks the canvases have pixels.
+            - name: Verify the demos in a browser
+              run: |
+                  pnpm --filter @saehrimnir/sickle-docs exec playwright install --with-deps chromium
+                  pnpm --filter @saehrimnir/sickle-docs exec astro preview --port 4321 &
+                  npx --yes wait-on http://localhost:4321/SickleJS/ --timeout 60000
+                  pnpm --filter @saehrimnir/sickle-docs verify
+
+            - uses: actions/upload-pages-artifact@v3
+              with:
+                  path: docs/dist
+
+    deploy:
+        # Pull requests get the full build and the browser check, but nothing is
+        # published from them.
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        needs: build
+        runs-on: ubuntu-latest
+        environment:
+            name: github-pages
+            url: ${{ steps.deploy.outputs.page_url }}
+        permissions:
+            pages: write
+            id-token: write
+        steps:
+            - id: deploy
+              uses: actions/deploy-pages@v4
