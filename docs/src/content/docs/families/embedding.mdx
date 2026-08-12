@@ -97,8 +97,22 @@ the reason this is the slowest pass in the library.
 ## Per-point values
 
 `sammonStress` and `curvilinearStress` have `localKind: "sum"` — the entries are
-contributions in the measure's own units and add up to the total. As with `share`,
-a large value is a large contribution, not a bad score.
+contributions in the measure's own units and add up to the total.
+
+Both measures are lower is better and both entries are quantities of *error*, so a
+large entry does mean more of the distortion sits on that point: it is worth looking
+at. The converse is where these arrays mislead. A small entry says only that *this
+measure* is not charging for that point, and the weighting decides what counts.
+Sammon weights by $d_{ij}$, so a point flung a long way breaks pairs that were
+already distant and is charged little; CCA weights by $\hat{d}_{ij}$, so it forgives
+a tear outright. On a projection with six points teleported into the wrong class,
+`curvilinearStress` bills them 24× the average point and `sammonStress` only 4× —
+and Sammon ranks three of those six *below* average, because the pairs they broke
+were long ones.
+
+The reading that survives both: a large entry is a lead, a small one is not an
+all-clear. [Reading a score](/SickleJS/interpreting/#per-point-values) has the
+general form of this, for `share` as well as `sum`.
 
 NeRV's `recall` and `precision` are **scalars** — the mean per-point $KL(p \| q)$ and
 $KL(q \| p)$ over the dataset, not per-point arrays. What it does give per point is

@@ -217,8 +217,8 @@ Many measures decompose per point, and that is usually their most useful output.
 | `localKind` | meaning | how to read it |
 | ---- | ---- | ---- |
 | `mean` | a per-point score; these average to the total | colour directly, on the measure's own range |
-| `share` | each point's fraction of the total error; these sum to 1 | a large value is a large *contribution*, not a bad score |
-| `sum` | contributions in the measure's units; these sum to the total | as `share`, with units |
+| `share` | each point's fraction of the total error; these sum to 1 | rank them; a large one is a lead, a small one is not an all-clear |
+| `sum` | contributions in the measure's units; these sum to the total | as `share`, but the magnitudes are meaningful too |
 | `partial-mean` | a per-point score, but some points are legitimately excluded and hold `NaN` | excluded points need their own colour — never 0 |
 | `none` | no decomposition exists | do not colour by it |
 
@@ -227,9 +227,12 @@ measure currently returns it; it is there for custom metrics built on the same
 contract.
 
 <Aside type="danger" title="The trap">
-`stress` is a `share`. Averaging it does not give the stress; colouring it on a
-"0 = good, 1 = bad" scale claims every point is nearly perfect, because each point's
-share of the total is about 1/N by construction. The library declares the kind so
+`stress` is a `share`. Averaging it does not give the stress, and colouring it on the
+measure's own "0 = good, 1 = bad" scale paints every point as nearly perfect: the
+entries sum to 1, so they *average* to 1/N whatever the projection is worth. Their
+spread around that average is the signal — two- to threefold on a good projection,
+twenty-fold when a few points are badly placed — which is why these get a scale
+fitted to the data rather than the measure's domain. The library declares the kind so
 this is checkable, and the test suite asserts the declared relationship holds for
 every measure.
 </Aside>
@@ -242,6 +245,32 @@ Switch the measure below and watch the legend change with it — `stress` and
 `gabrielClassificationError` is the `partial-mean` case: leaves of the Gabriel graph
 have no defined weighting, and isolated points have no neighbours at all, so the
 measure excludes both rather than inventing a number. They are drawn hollow.
+
+### Reading a `share` or a `sum`
+
+Five measures decompose this way — `stress`, `nonMetricStress` and `topologicalH0` as
+`share`, `sammonStress` and `curvilinearStress` as `sum` — and all five are lower is
+better, because both kinds exist to split a *total error* across the points that
+caused it.
+
+So the direction does carry over. **A large entry means more of the distortion sits
+on that point**, and it is worth looking at. The trap is the converse:
+
+- **A small entry is not an all-clear.** It says this measure is not charging for
+  that point, and each measure charges for a different thing. Teleport six points
+  into the wrong class and `curvilinearStress` bills them 24× the average point,
+  `nonMetricStress` 21×, `sammonStress` 4×, `stress` only 1.5× — while
+  `topologicalH0` bills them **0.7×**, less than average, because misplaced
+  individuals are not what it is looking at.
+- **A flat array means diffuse damage, not no damage.** Cut a circle open into an arc
+  and the six points at the cut carry 11% of the total — almost exactly their 12%
+  share of the points. Nothing is wrong with the array: unrolling changes every
+  pairwise distance, so no point is more to blame than any other. Only
+  `nonMetricStress` concentrates it, at 38%.
+
+What the entries are *not* is confounded by where a point sits: contribution
+correlates with distance-from-centre at $|r| < 0.13$ on a good projection, so a
+peripheral point is not penalised for being peripheral.
 
 ### What the colours are scaled against
 
@@ -256,8 +285,9 @@ looking at**:
   one plot; do not compare it to anything else.
 
 Unbounded measures only ever get the amber scale, because there is no full range to span.
-So do `share` and `sum` contributions: each point's share is about 1/N, so drawing them
-over their nominal `[0, 1]` would paint every point the same colour.
+So do `share` and `sum` contributions: they average to 1/N of the total by construction,
+so drawing them over the measure's nominal `[0, 1]` would paint every point the same
+colour and hide the very differences worth seeing.
 
 Where a defensible threshold exists, a third mode cuts the scale into bands. These are
 kept deliberately sparse — a published convention where one exists (silhouette follows
