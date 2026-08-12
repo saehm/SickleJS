@@ -6,6 +6,7 @@ description: Floors, directions, unbounded measures, and what a per-point array 
 import MetricCurve from "../../components/MetricCurve.svelte";
 import ProjectionPair from "../../components/ProjectionPair.svelte";
 import MethodComparison from "../../components/MethodComparison.svelte";
+import Localisation from "../../components/Localisation.svelte";
 import MeasureExplorer from "../../components/MeasureExplorer.svelte";
 import { Aside } from "@astrojs/starlight/components";
 
@@ -257,16 +258,31 @@ So the direction does carry over. **A large entry means more of the distortion s
 on that point**, and it is worth looking at. The trap is the converse:
 
 - **A small entry is not an all-clear.** It says this measure is not charging for
-  that point, and each measure charges for a different thing. Teleport six points
-  into the wrong class and `curvilinearStress` bills them 24× the average point,
-  `nonMetricStress` 21×, `sammonStress` 4×, `stress` only 1.5× — while
-  `topologicalH0` bills them **0.7×**, less than average, because misplaced
-  individuals are not what it is looking at.
-- **A flat array means diffuse damage, not no damage.** Cut a circle open into an arc
-  and the six points at the cut carry 11% of the total — almost exactly their 12%
-  share of the points. Nothing is wrong with the array: unrolling changes every
-  pairwise distance, so no point is more to blame than any other. Only
-  `nonMetricStress` concentrates it, at 38%.
+  that point, and each measure charges for a different thing.
+- **A flat array means diffuse damage, not no damage.** When a distortion touches
+  every pair at once, no point is more to blame than any other, and a faithful
+  decomposition says so.
+
+Both are easier to see than to argue. Below is one layout with six points dropped
+into the wrong class — the same damage, decomposed five ways:
+
+<Localisation client:visible id="strays" measure="curvilinearStress" />
+
+Step through the five. `curvilinearStress` and `nonMetricStress` pick the six out
+immediately; `sammonStress` bills them only about 4×, because a point flung a long
+way breaks pairs that were already distant and Sammon weights by the original
+distance. `topologicalH0` bills them *below* average — misplaced individuals are
+simply not what it is looking at, and its dimmest points are not its healthiest.
+
+Now the opposite kind of damage, a circle cut open into an arc, where every pairwise
+distance changes at once:
+
+<Localisation client:visible id="unrolled" measure="stress" />
+
+Four of the five now carry almost exactly their proportional share. That flatness is
+the correct answer, not a failure: there is no culprit to point at. Only
+`nonMetricStress`, which cares about the ordering the cut destroys, still
+concentrates.
 
 What the entries are *not* is confounded by where a point sits: contribution
 correlates with distance-from-centre at $|r| < 0.13$ on a good projection, so a

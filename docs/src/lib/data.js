@@ -28,3 +28,4 @@ export const datasets = () => json("datasets.json");
 export const dataset = (name) => json(`${name}.json`);
 export const disagreements = () => json("disagreements.json");
 export const methods = () => json("methods.json");
+export const localisation = () => json("localisation.json");

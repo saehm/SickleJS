@@ -666,3 +666,91 @@ console.log("\nprojection methods:");
 
     writeFileSync(join(outDir, "methods.json"), JSON.stringify(compare, null, 2));
 }
+
+/*
+ * Where each measure sends the blame.
+ *
+ * A `share` and a `sum` split one total across the points that caused it, and
+ * the reading trap is that a small entry looks like an all-clear. It is not:
+ * the weighting decides what gets charged, so the same damage lands very
+ * differently depending on the measure. Two cases, deliberately opposite —
+ * six misplaced points (localised), and a circle cut into an arc (diffuse).
+ *
+ * Generated rather than written down: `interpreting.mdx` quotes these ratios,
+ * and a hand-copied number is exactly the drift this file exists to prevent.
+ */
+console.log("\nlocalisation:");
+{
+    const decompose = (hd, ld) => {
+        const H = sickle.toVectors(hd), L = sickle.toVectors(ld);
+        const a = sickle.analyze(H, L, { ccaLambda: 1 });
+        return {
+            stress: sickle.stress(a.moments),
+            nonMetricStress: sickle.nonMetricStress(H, L),
+            topologicalH0: sickle.topologicalH0(H, L),
+            sammonStress: sickle.sammonStress(a.embedding),
+            curvilinearStress: sickle.curvilinearStress(a.embedding),
+        };
+    };
+
+    /** Mean contribution of the marked points against everyone else. */
+    const concentration = (local, marked) => {
+        const flagged = new Set(marked);
+        let inSum = 0, outSum = 0;
+        for (let i = 0; i < local.length; ++i) {
+            if (flagged.has(i)) inSum += local[i]; else outSum += local[i];
+        }
+        const inMean = inSum / flagged.size;
+        const outMean = outSum / (local.length - flagged.size);
+        const order = [...local.keys()].sort((i, j) => local[j] - local[i]);
+        return {
+            ratio: r(inMean / outMean),
+            // What fraction of the whole total the marked points carry ...
+            carried: r(inSum / (inSum + outSum)),
+            // ... against the fraction of the points they are.
+            expected: r(flagged.size / local.length),
+            ranks: marked.map((i) => order.indexOf(i)).sort((x, y) => x - y),
+        };
+    };
+
+    const build = (id, title, note, { hd, ld }, marked) => {
+        const results = decompose(hd, ld);
+        const measures = Object.entries(results).map(([name, res]) => ({
+            name,
+            value: r(res.value),
+            localKind: res.localKind,
+            local: arr(res.local),
+            ...concentration(res.local, marked),
+        }));
+        console.log(`  ${id}: ` + measures.map((m) => `${m.name} ${m.ratio.toFixed(1)}x`).join(", "));
+        return {
+            id, title, note,
+            points: ld.map(([x, y]) => [r(x), r(y)]),
+            marked,
+            n: ld.length,
+            measures,
+        };
+    };
+
+    const strays = strayPoints(6);
+    const loop = loopAndArc(50);
+    // The cut runs between the last and first points of the circle.
+    const atCut = [0, 1, 2, 47, 48, 49];
+
+    writeFileSync(join(outDir, "localisation.json"), JSON.stringify([
+        build(
+            "strays",
+            "Six points dropped into the wrong class",
+            "Damage confined to six of the 160 points. A measure that localises should bill them far above the average point.",
+            strays,
+            strays.strayIndices,
+        ),
+        build(
+            "unrolled",
+            "A circle cut open into an arc",
+            "Damage spread over every pair at once. No point is more to blame, and a faithful decomposition should say so.",
+            loop,
+            atCut,
+        ),
+    ], null, 2));
+}
