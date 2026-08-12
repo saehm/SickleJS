@@ -156,6 +156,34 @@ describe("curves", () => {
         for (let k = r.kMin; k <= r.kMax; ++k) close(r.values[k], sickle.rnx(cr, k), 1e-12);
     });
 
+    /*
+     * Every curve, not just the two above: each is a separate `buildCurve`
+     * call with its own k ceiling, so a wrong bound or a transcription slip in
+     * one is invisible in the others.
+     */
+    it("agree for every measure that has a curve", () => {
+        const cases: [string, sickle.Curve, (k: number) => number][] = [
+            ["continuity", sickle.continuityCurve(cr), (k) => sickle.continuity(cr, k)],
+            ["qnx", sickle.qnxCurve(cr), (k) => sickle.qnx(cr, k)],
+            ["lcmc", sickle.lcmcCurve(cr), (k) => sickle.lcmc(cr, k)],
+            ["mrreFalse", sickle.mrreFalseCurve(cr), (k) => sickle.mrreFalse(cr, k)],
+            ["mrreMissing", sickle.mrreMissingCurve(cr), (k) => sickle.mrreMissing(cr, k)],
+        ];
+        for (const [name, curve, scalar] of cases) {
+            for (let k = curve.kMin; k <= curve.kMax; ++k) {
+                close(curve.values[k], scalar(k), 1e-12, `${name} at k=${k}`);
+            }
+        }
+    });
+
+    it("stop where their own measure stops", () => {
+        // Q_NX and LCMC reach n-1; R_NX loses one more to its rescaling.
+        assert.equal(sickle.qnxCurve(cr).kMax, sickle.maxKQnx(cr.n));
+        assert.equal(sickle.lcmcCurve(cr).kMax, sickle.maxKQnx(cr.n));
+        assert.equal(sickle.rnxCurve(cr).kMax, sickle.maxKRnx(cr.n));
+        assert.equal(sickle.continuityCurve(cr).kMax, sickle.maxKTrustworthiness(cr.n));
+    });
+
     it("are NaN outside their validity domain", () => {
         const t = sickle.trustworthinessCurve(cr);
         assert.ok(Number.isNaN(t.values[0]), "k=0 must be NaN");

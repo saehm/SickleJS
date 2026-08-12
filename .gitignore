@@ -15,3 +15,6 @@ docs/public/data
 
 # The reference generators are Python; their bytecode is not ours to keep.
 __pycache__/
+
+# Coverage output.
+coverage/

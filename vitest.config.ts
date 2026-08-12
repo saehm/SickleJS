@@ -16,6 +16,23 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
     test: {
+        /*
+         * Coverage is measured on the node project; `pnpm test:coverage`.
+         *
+         * `pass.worker.ts` is excluded deliberately, not because it is
+         * untested — `test/parallel.test.ts` spawns it and asserts the result
+         * is bit-identical to the synchronous pass — but because it runs in a
+         * worker thread the v8 provider cannot instrument. Left in, it reports
+         * a permanent 0% and makes the summary read as though the parallel
+         * path were unverified.
+         */
+        coverage: {
+            provider: "v8",
+            include: ["src/**"],
+            exclude: ["src/parallel/pass.worker.ts", "src/parallel/worker-source.ts"],
+            reporter: ["text", "html", "lcov", "json-summary"],
+            reportsDirectory: "coverage",
+        },
         projects: [
             {
                 test: {

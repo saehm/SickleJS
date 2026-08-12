@@ -36,8 +36,10 @@ jobs:
 
             # The maths. Parity against the committed zadu/scikit-learn/scipy
             # fixtures runs here, so CI needs neither Python nor zadu.
+            # Run under coverage so the report comes from the same run that
+            # gates the merge, rather than a second one that could disagree.
             - name: Run tests
-              run: pnpm test
+              run: pnpm test:coverage
 
             - name: Install Playwright browsers
               run: pnpm exec playwright install --with-deps chromium firefox webkit
@@ -52,3 +54,12 @@ jobs:
             # problem, and the distinction is worth keeping in the log.
             - name: Build
               run: pnpm build
+
+            # Ahead of nothing else, and non-blocking: a Codecov outage should
+            # not turn a green suite red. Needs CODECOV_TOKEN in repo secrets;
+            # without it the step reports and moves on.
+            - name: Upload coverage reports to Codecov
+              uses: codecov/codecov-action@v5
+              continue-on-error: true
+              with:
+                  token: ${{ secrets.CODECOV_TOKEN }}
